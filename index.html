@@ -147,9 +147,9 @@
     </style>
   </head>
   <body>
-    <canvas id="screen" width="480" height="270" aria-label="Purrfect Year: an animated pixel-art diary of a year, a cottage and a family of cats through the seasons"></canvas>
+    <canvas id="screen" width="480" height="270" aria-label="Purrfect Year: an animated pixel-art diary of a year, one black cat and the places and people around him"></canvas>
     <div id="hud"></div>
-    <div id="card" aria-live="polite"><div class="series">PURRFECT YEAR &middot; 2026</div><div class="name"></div><div class="meta"></div></div>
+    <div id="card" aria-live="polite"><div class="series">PURRFECT YEAR &middot; 2025&ndash;26</div><div class="name"></div><div class="meta"></div></div>
     <div id="ui">
       <div id="seasons" role="group" aria-label="Choose an edition"></div>
       <div id="hint"><b>F</b> fullscreen &middot; <b>&larr; &rarr;</b> season &middot; <b>Space</b> pause &middot; <b>H</b> stats</div>
@@ -175,26 +175,33 @@
     <script src="src/palette.js"></script>
     <script src="src/layout.js"></script>
     <script src="src/editions.js"></script>
+    <script src="src/places.js"></script>
     <script src="src/festive.js"></script>
     <script src="src/summer.js"></script>
-    <!-- scene modules (each file registers itself with HD.module) -->
-    <script src="src/bg.js"></script>
-    <script src="src/ground.js"></script>
-    <script src="src/house.js"></script>
-    <script src="src/props.js"></script>
+    <script src="src/mascot.js"></script>
+    <!-- the world: sky, backdrop, street (each file registers itself with HD.module) -->
+    <script src="src/sky.js"></script>
+    <script src="src/backdrops.js"></script>
+    <script src="src/street.js"></script>
+    <!-- the six buildings (each draws only at its own place) -->
+    <script src="src/building-apt1.js"></script>
+    <script src="src/building-apt2.js"></script>
+    <script src="src/building-soho.js"></script>
+    <script src="src/building-bhills.js"></script>
+    <script src="src/building-marina.js"></script>
+    <script src="src/building-herndon.js"></script>
+    <!-- decorations, fire and fireworks, weather, smoke and haze -->
+    <script src="src/decor-boston.js"></script>
+    <script src="src/decor-trips.js"></script>
     <script src="src/fire.js"></script>
-    <script src="src/weather.js"></script>
-    <script src="src/atmosphere.js"></script>
-    <!-- seasonal extensions (one per module owner) -->
-    <script src="src/bg-seasons.js"></script>
-    <script src="src/ground-seasons.js"></script>
-    <script src="src/house-seasons.js"></script>
-    <script src="src/props-seasons.js"></script>
     <script src="src/fire-seasons.js"></script>
+    <script src="src/weather.js"></script>
     <script src="src/weather-seasons.js"></script>
+    <script src="src/atmosphere.js"></script>
     <script src="src/atmosphere-seasons.js"></script>
-    <!-- the Summer Story family -->
+    <!-- the cats and the AZTMM sign -->
     <script src="src/family.js"></script>
+    <script src="src/brand.js"></script>
     <script>
       // Edition picker, keyboard switching and the title card.
       (function () {
@@ -216,7 +223,7 @@
           return b;
         });
         function showCard(e) {
-          card.querySelector('.series').textContent = 'PURRFECT YEAR \u00b7 2026 \u00b7 ENTRY ' + (list.indexOf(e) + 1);
+          card.querySelector('.series').textContent = 'PURRFECT YEAR \u00b7 2025\u201326 \u00b7 ENTRY ' + (list.indexOf(e) + 1);
           card.querySelector('.name').textContent = e.name;
           card.querySelector('.meta').textContent = e.festival + ' · ' + e.when;
           card.classList.add('show');
@@ -245,7 +252,10 @@
           var i = list.indexOf(HD.edition);
           if (ev.key === 'ArrowRight') HD.setEdition(list[(i + 1) % list.length].id);
           else if (ev.key === 'ArrowLeft') HD.setEdition(list[(i - 1 + list.length) % list.length].id);
-          else if (/^[1-9]$/.test(ev.key) && list[+ev.key - 1]) HD.setEdition(list[+ev.key - 1].id);
+          else if (/^[0-9]$/.test(ev.key)) {
+            var n = ev.key === '0' ? 10 : +ev.key; // 1-9 and 0 for entry 10
+            if (list[n - 1]) HD.setEdition(list[n - 1].id);
+          }
         });
       })();
     </script>

@@ -571,6 +571,7 @@
   const LG = new Float32Array(NPIX);
   const LB = new Float32Array(NPIX);
   const lights = [];
+  const shades = [];
   const mapCache = new Map();
 
   /**
@@ -623,6 +624,16 @@
       if (!o || !(o.i > 0)) return;
       lights.push(o);
     },
+    /**
+     * Shade part of the daylight fill this frame (a cast shadow): inside the
+     * polygon poly = [[x, y], ...] the fill is scaled by (1 - k). Placed
+     * lights are not affected. Call from a module's lights(t, L) hook; it
+     * does nothing at night (no fill).
+     */
+    shade(o) {
+      if (!o || !(o.k > 0) || !o.poly || o.poly.length < 3) return;
+      shades.push(o);
+    },
     list: lights,
   };
   HD.lights = LightAPI;
@@ -642,6 +653,7 @@
     LR.fill(fill ? fill[0] : 0);
     LG.fill(fill ? fill[1] : 0);
     LB.fill(fill ? fill[2] : 0);
+    if (fill) for (const sh of shades) shadePoly(sh, fill);
     for (const l of lights) {
       const rx = Math.max(1, Math.round(l.r));
       const ry = Math.max(1, Math.round(l.ry || l.r));
@@ -678,6 +690,41 @@
           LR[p] += kr * f;
           LG[p] += kg * f;
           LB[p] += kb * f;
+        }
+      }
+    }
+  }
+
+  /** scale the daylight fill inside a polygon (sampled at pixel centres, like g.poly) */
+  function shadePoly(sh, fill) {
+    const pts = sh.poly;
+    const keep = 1 - Math.min(1, sh.k);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const p of pts) {
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    minY = Math.max(0, Math.floor(minY));
+    maxY = Math.min(H - 1, Math.ceil(maxY));
+    const xs = [];
+    for (let y = minY; y <= maxY; y++) {
+      const sy = y + 0.5;
+      xs.length = 0;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const a = pts[i];
+        const b = pts[j];
+        if (a[1] <= sy !== b[1] <= sy) xs.push(a[0] + ((sy - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      }
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const xa = Math.max(0, Math.ceil(xs[k] - 0.5));
+        const xb = Math.min(W - 1, Math.floor(xs[k + 1] - 0.5));
+        for (let x = xa; x <= xb; x++) {
+          const p = y * W + x;
+          LR[p] = fill[0] * keep;
+          LG[p] = fill[1] * keep;
+          LB[p] = fill[2] * keep;
         }
       }
     }
@@ -776,9 +823,12 @@
   // objects), k = reflectivity 0..1.
   // ------------------------------------------------------------------
   function reflections(g, t) {
-    const pud = HD.layout && HD.layout.puddles;
+    // the current place's street puddles show only while it rains
+    const ed = HD.edition;
+    const pl = HD.place ? HD.place() : null;
+    const pud = pl ? (ed && ed.weather && ed.weather.rain > 0 ? pl.puddles : null) : HD.layout && HD.layout.puddles;
     if (!pud || !pud.length) return;
-    if (HD.edition && HD.edition.puddles === false) return; // dry-weather editions
+    if (ed && ed.puddles === false) return; // dry-weather editions
     for (let pi = 0; pi < pud.length; pi++) {
       const P = pud[pi];
       const cx = Math.round(P.x);
@@ -913,6 +963,7 @@
   function render(t) {
     HD.t = t;
     lights.length = 0;
+    shades.length = 0;
     for (const lf of lightFns) {
       try {
         lf.fn(t, LightAPI);
