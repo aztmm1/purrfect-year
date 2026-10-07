@@ -17,6 +17,16 @@
  *    (silhouette, z 29.7); the niece drops by.
  *  nyc / la / sandiego: the family outdoors at z 47.
  *  dc: a back row behind the birthday table (z 33) and a front row (z 47).
+ *
+ * Night out (Boston celebrations, OFF unless the edition carries the
+ * 'night-out' tag or the page has ?nightout=1): in lunar, spring, summer,
+ * harvest, halloween, lights, winter, newyear and match the partner is out in
+ * the yard with three friends (original generic cats: ginger, cream, grey
+ * tabby) in festive outfits, lit by their own lanterns, sparklers and diyas
+ * or by the fire and porch light (z 47.5, plus a lights() hook), while he is
+ * home alone in the upper-right window (house). In match he sits alone on the
+ * porch steps and the niece does not drop by. nyc and home stay the two of
+ * them together.
  */
 (function () {
   'use strict';
@@ -1438,9 +1448,9 @@
     return c && (NIGHT_FLAG || HD.tag('night-out')) ? c : null;
   }
 
-  // the wife plus three friends: original generic cats, no names
+  // the partner plus three friends: original generic cats, no names
   const NFUR = {
-    wife: { fur: PARTNER.fur, hair: 'long', hairC: PARTNER.hairC, sheenC: PARTNER.sheenC, light: PARTNER.light, eye: PARTNER.eye, nose: PARTNER.nose, mouthC: PARTNER.mouthC, happyEm: true },
+    partner: { fur: PARTNER.fur, hair: 'long', hairC: PARTNER.hairC, sheenC: PARTNER.sheenC, light: PARTNER.light, eye: PARTNER.eye, nose: PARTNER.nose, mouthC: PARTNER.mouthC, happyEm: true },
     ginger: { fur: nite('#d4782f'), dark: nite('#94451a'), light: nite('#f6d29c'), muzzle: 'f', tabby: true, inner: nite('#f0a0a0'), eye: '#e8d050', nose: nite('#e88a94'), mouthC: '#3a160c', happyEm: true },
     cream: { fur: nite('#ece2d0'), light: nite('#fffaf0'), muzzle: 'f', inner: nite('#f4a8b4'), eye: '#8cc8f4', nose: nite('#f08c9c'), mouthC: '#5a3438', lid: '#3a2a2a', happyEm: true },
     tabby: { fur: nite('#a0a6b0'), dark: nite('#4e545e'), light: nite('#dfe2e8'), muzzle: 'f', tabby: true, inner: nite('#d8909c'), eye: '#a8dc68', nose: nite('#c87888'), mouthC: '#2a1a22', happyEm: true },
@@ -1741,7 +1751,7 @@
       const o = Object.assign({}, c.o);
       if (c.al) o.al = c.al;
       if (c.ar) o.ar = c.ar;
-      if (c.who === 'wife') {
+      if (c.who === 'partner') {
         o.br = w.br;
         o.gust = w.gust;
       }
@@ -1789,9 +1799,9 @@
     lunar: {
       stage: 'right',
       seed: 0,
-      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      cast: ['partner', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: NV('#d41e2a'), collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#24182a') },
+        partner: { shirt: NV('#d41e2a'), collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#24182a') },
         ginger: { shirt: N('#c8202c'), shirtAlt: N('#f0b830'), pattern: 'floral', neck: 'tee', pants: N('#2a2228') },
         cream: { shirt: N('#b0162c'), collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#1e1a22') },
         tabby: { shirt: N('#e23428'), shirtAlt: N('#f4c440'), pattern: 'hem', neck: 'tee', pants: N('#2a2a34') },
@@ -1799,9 +1809,11 @@
       big: (t, s) => inWin(s, 118, 124),
       act(c, t, s, big) {
         const up = big >= 0;
-        if (c.who === 'wife') give(c, -1, up ? 'up' : 'out', 'redLantern');
+        if (c.who === 'partner') give(c, -1, up ? 'up' : 'out', 'redLantern');
         else if (c.who === 'tabby') give(c, 1, up ? 'up' : 'out', 'redLantern');
-        else give(c, c.who === 'ginger' ? -1 : 1, up ? 'up' : 'out', 'sparkler', { big: up });
+        // the back-row sparkler is held up beside the head so it clears the front row
+        else if (c.who === 'ginger') give(c, -1, up ? 'up' : 'toast', 'sparkler', { big: up });
+        else give(c, 1, up ? 'up' : 'out', 'sparkler', { big: up });
         if (up) cheerUp(c, t, c.i);
       },
     },
@@ -1809,9 +1821,9 @@
     spring: {
       stage: 'left',
       seed: 3,
-      cast: ['cream', 'ginger', 'wife', 'tabby'],
+      cast: ['cream', 'ginger', 'partner', 'tabby'],
       wear: {
-        wife: { shirt: NV('#c4a0ea'), neck: 'tee', pants: NV('#efe6d2') },
+        partner: { shirt: NV('#c4a0ea'), neck: 'tee', pants: NV('#efe6d2') },
         ginger: { shirt: N('#9cdcb8'), neck: 'tee', pants: N('#f2ecdc'), hat: 'bunny', hatC: N('#f6f2ee'), hatC2: N('#f4a8c0'), hatBand: N('#f4a8c0') },
         cream: { shirt: N('#f6b49c'), neck: 'tee', pants: N('#f4f0e6') },
         tabby: { shirt: N('#9cc4f0'), neck: 'tee', pants: N('#ece6d6') },
@@ -1819,7 +1831,7 @@
       big: (t, s) => inWin(s, 96, 102),
       act(c, t, s, big) {
         if (c.who === 'cream') give(c, 1, 'down', 'basket');
-        if (c.who === 'wife') give(c, 1, 'out', 'paperLantern');
+        if (c.who === 'partner') give(c, 1, 'out', 'paperLantern');
         if (big >= 0) {
           if (c.who === 'tabby') {
             give(c, -1, 'up', 'egg', { c: 4 });
@@ -1838,9 +1850,9 @@
     summer: {
       stage: 'left',
       seed: 6,
-      cast: ['ginger', 'cream', 'wife', 'tabby'],
+      cast: ['ginger', 'cream', 'partner', 'tabby'],
       wear: {
-        wife: { shirt: NV('#f6f2ea'), shirtAlt: NV('#e86a8a'), pattern: 'hem', pants: NV('#f6f2ea'), dress: true, neck: 'tee', hat: 'crown', pom: NV('#f4a0c0'), flower2: NV('#f8e070'), leaf: NV('#5aa84a') },
+        partner: { shirt: NV('#f6f2ea'), shirtAlt: NV('#e86a8a'), pattern: 'hem', pants: NV('#f6f2ea'), dress: true, neck: 'tee', hat: 'crown', pom: NV('#f4a0c0'), flower2: NV('#f8e070'), leaf: NV('#5aa84a') },
         ginger: { shirt: N('#f2d24a'), neck: 'tee', pants: N('#9ab4d8'), hat: 'crown', pom: N('#f8f4f0'), flower2: N('#c8a0f0'), leaf: N('#5aa84a') },
         cream: { shirt: N('#8ec0f0'), pants: N('#8ec0f0'), dress: true, neck: 'tee', hat: 'crown', pom: N('#f8e070'), flower2: N('#f48aa8'), leaf: N('#5aa84a') },
         tabby: { shirt: N('#f08a70'), neck: 'tee', pants: N('#f2ecdc'), hat: 'crown', pom: N('#ffffff'), flower2: N('#f8e070'), leaf: N('#5aa84a') },
@@ -1860,16 +1872,16 @@
     harvest: {
       stage: 'left',
       seed: 9,
-      cast: ['tabby', 'ginger', 'wife', 'cream'],
+      cast: ['tabby', 'ginger', 'partner', 'cream'],
       wear: {
-        wife: { shirt: NV('#ece0c4'), shirtAlt: NV('#cdbf9e'), pattern: 'cable', neck: 'tee', pants: NV('#2c3650'), scarf: 'R', scarfC: NV('#c0582a'), scarfC2: NV('#e8923e') },
+        partner: { shirt: NV('#ece0c4'), shirtAlt: NV('#cdbf9e'), pattern: 'cable', neck: 'tee', pants: NV('#2c3650'), scarf: 'R', scarfC: NV('#c0582a'), scarfC2: NV('#e8923e') },
         ginger: { shirt: N('#3a7a50'), shirtAlt: N('#ece0c4'), pattern: 'band', neck: 'tee', pants: N('#3a3036'), scarf: 'L', scarfC: N('#efe6d2'), scarfC2: N('#c8bca4') },
         cream: { shirt: N('#8e2a3a'), shirtAlt: N('#b84a58'), pattern: 'cable', neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#e0a83a'), scarfC2: N('#b88028') },
         tabby: { shirt: N('#d8a033'), shirtAlt: N('#8e2a3a'), pattern: 'band', neck: 'tee', pants: N('#4a3a30'), scarf: 'L', scarfC: N('#8e2a3a'), scarfC2: N('#b84a58') },
       },
       big: (t, s) => inWin(s, 132, 138),
       act(c, t, s, big) {
-        const mugs = { wife: N('#efe6d6'), ginger: N('#c84a3a'), cream: N('#4a7ab8'), tabby: N('#efe6d6') };
+        const mugs = { partner: N('#efe6d6'), ginger: N('#c84a3a'), cream: N('#4a7ab8'), tabby: N('#efe6d6') };
         if (big >= 0) {
           give(c, c.face, 'toast', 'mug', { c: mugs[c.who] });
           c.o.eyes = 'happy';
@@ -1882,9 +1894,9 @@
     halloween: {
       stage: 'left',
       seed: 12,
-      cast: ['cream', 'ginger', 'wife', 'tabby'],
+      cast: ['cream', 'ginger', 'partner', 'tabby'],
       wear: {
-        wife: { shirt: NV('#6a3a9a'), neck: 'vneck', pants: NV('#1c1622'), dress: true, hat: 'witch', hatC: NV('#3a2a58'), hatBand: NV('#e88a24') },
+        partner: { shirt: NV('#6a3a9a'), neck: 'vneck', pants: NV('#1c1622'), dress: true, hat: 'witch', hatC: NV('#3a2a58'), hatBand: NV('#e88a24') },
         ginger: { shirt: N('#e8e6f0'), collar: N('#b01828'), neck: 'polo', pants: N('#1a1820'), cape: true, capeC: '#15111c', hatC2: N('#b01828') },
         cream: { round: true, shirt: N('#ec781c'), shirtAlt: '#2a1406', pattern: 'jack', neck: 'none', pants: N('#ec781c'), hat: 'stem', leaf: N('#4a8a3a') },
         tabby: { shirt: '#1e1c24', shirtAlt: N('#ece8de'), pattern: 'bones', neck: 'none', pants: '#1e1c24' },
@@ -1892,7 +1904,7 @@
       big: (t, s) => inWin(s, 140, 146),
       act(c, t, s, big) {
         const on = big >= 0;
-        if (c.who === 'wife') give(c, -1, on ? 'toast' : 'out', 'pail');
+        if (c.who === 'partner') give(c, -1, on ? 'toast' : 'out', 'pail');
         if (!on) return;
         if (c.who === 'ginger') {
           // the vampire swirls the cape open: "boo!"
@@ -1914,9 +1926,9 @@
     lights: {
       stage: 'right',
       seed: 15,
-      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      cast: ['partner', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: NV('#d0207a'), shirtAlt: NV('#f4c440'), pattern: 'hem', collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#f0b838') },
+        partner: { shirt: NV('#d0207a'), shirtAlt: NV('#f4c440'), pattern: 'hem', collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#f0b838') },
         ginger: { shirt: N('#1a9a5c'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', pants: N('#ece2c8') },
         cream: { shirt: N('#2a50d8'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#2a50d8'), dress: true },
         tabby: { shirt: N('#f08a1a'), shirtAlt: N('#c81a6a'), pattern: 'hem', collar: N('#c81a6a'), neck: 'mandarin', pants: N('#ece2c8') },
@@ -1924,9 +1936,10 @@
       big: (t, s) => inWin(s, 126, 132),
       act(c, t, s, big) {
         const up = big >= 0;
-        if (c.who === 'wife') give(c, -1, up ? 'toast' : 'out', 'diya');
+        if (c.who === 'partner') give(c, -1, up ? 'toast' : 'out', 'diya');
         else if (c.who === 'cream') give(c, 1, up ? 'toast' : 'out', 'diya');
-        else give(c, c.who === 'ginger' ? -1 : 1, up ? 'up' : 'out', 'sparkler', { big: up });
+        else if (c.who === 'ginger') give(c, -1, up ? 'up' : 'toast', 'sparkler', { big: up });
+        else give(c, 1, up ? 'up' : 'toast', 'sparkler', { big: up });
         if (up) cheerUp(c, t, c.i);
       },
     },
@@ -1934,9 +1947,9 @@
     winter: {
       stage: 'right',
       seed: 18,
-      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      cast: ['partner', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: NV('#c88e52'), shirtAlt: NV('#7a5432'), coat: true, neck: 'tee', pants: NV('#2a2228'), hat: 'beanie', hatC: NV('#d42a32'), hatC2: NV('#f4eee6'), pom: NV('#ffffff'), scarf: 'R', scarfC: NV('#f4eee6'), scarfC2: NV('#d42a32') },
+        partner: { shirt: NV('#c88e52'), shirtAlt: NV('#7a5432'), coat: true, neck: 'tee', pants: NV('#2a2228'), hat: 'beanie', hatC: NV('#d42a32'), hatC2: NV('#f4eee6'), pom: NV('#ffffff'), scarf: 'R', scarfC: NV('#f4eee6'), scarfC2: NV('#d42a32') },
         ginger: { shirt: N('#2c3c70'), shirtAlt: N('#c8a040'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#ece4d4'), hatC2: N('#c8bca8'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#c82a30'), scarfC2: N('#f2ece4') },
         cream: { shirt: N('#c02a30'), shirtAlt: N('#6a1218'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#2a7a44'), hatC2: N('#f2ece4'), pom: N('#ffffff'), scarf: 'R', scarfC: N('#2a7a44'), scarfC2: N('#f2ece4') },
         tabby: { shirt: N('#2a6a40'), shirtAlt: N('#14361e'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#3a5ab0'), hatC2: N('#ece4d4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#3a5ab0') },
@@ -1963,9 +1976,9 @@
     newyear: {
       stage: 'left',
       seed: 21,
-      cast: ['ginger', 'cream', 'wife', 'tabby'],
+      cast: ['ginger', 'cream', 'partner', 'tabby'],
       wear: {
-        wife: { shirt: NV('#e8c050'), pants: NV('#e8c050'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: NV('#f04a9a'), hatC2: NV('#f4c440'), pom: NV('#ffffff') },
+        partner: { shirt: NV('#e8c050'), pants: NV('#e8c050'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: NV('#f04a9a'), hatC2: NV('#f4c440'), pom: NV('#ffffff') },
         ginger: { shirt: N('#7a3ab0'), neck: 'tee', pants: N('#22222a'), hat: 'party', hatC: N('#2ab0b0'), hatC2: N('#e8e8f0'), pom: N('#f4c440') },
         cream: { shirt: N('#1f8a6a'), pants: N('#1f8a6a'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f4c440'), hatC2: N('#c81a6a'), pom: N('#ffffff') },
         tabby: { shirt: N('#2a3a8a'), collar: N('#f2ece4'), neck: 'shirt', shirtAlt: N('#f2ece4'), pants: N('#1e1e28'), hat: 'party', hatC: N('#d82a30'), hatC2: N('#f2ece4'), pom: N('#f4c440') },
@@ -1974,8 +1987,8 @@
       big: (t, s) => inWin(s, HD.LOOP * 0.75 + 1.2, HD.LOOP * 0.75 + 6.5),
       act(c, t, s, big) {
         const look = inWin(s, HD.LOOP * 0.25 + 1.2, HD.LOOP * 0.25 + 5) >= 0;
-        const item = c.who === 'wife' ? 'sparkler' : 'flute';
-        const side = c.who === 'wife' ? -1 : c.face;
+        const item = c.who === 'partner' ? 'sparkler' : 'flute';
+        const side = c.who === 'partner' ? -1 : c.face;
         if (big >= 0) {
           give(c, side, 'up', item, { big: true, glint: (Math.floor(T.step(t, 6) * 6) + c.i) % 3 === 0 });
           cheerUp(c, t, c.i);
@@ -1991,9 +2004,9 @@
     match: {
       stage: 'right',
       seed: 24,
-      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      cast: ['partner', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: NV('#f2eee6'), neck: 'tee', pants: NV('#2a2a34'), scarf: 'R', scarfC: NV('#d0202a'), scarfC2: NV('#f4c440') },
+        partner: { shirt: NV('#f2eee6'), neck: 'tee', pants: NV('#2a2a34'), scarf: 'R', scarfC: NV('#d0202a'), scarfC2: NV('#f4c440') },
         ginger: { shirt: N('#2a5a3a'), neck: 'tee', pants: N('#2c3448'), scarf: 'L', scarfC: N('#8cc8f0'), scarfC2: N('#f4f4f4') },
         cream: { shirt: N('#2a3460'), neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#2a8a4a'), scarfC2: N('#f4f4f4') },
         tabby: { shirt: N('#7a2a3a'), neck: 'tee', pants: N('#22222a'), scarf: 'L', scarfC: N('#26346a'), scarfC2: N('#f08a2a') },
