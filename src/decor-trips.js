@@ -100,6 +100,31 @@
   Buf.prototype.vl = function (x, y0, y1, c) {
     for (let y = R(y0); y <= R(y1); y++) this.set(x, y, c);
   };
+  /** 1 px Bresenham line */
+  Buf.prototype.line = function (x0, y0, x1, y1, c) {
+    x0 = R(x0);
+    y0 = R(y0);
+    x1 = R(x1);
+    y1 = R(y1);
+    const dx = Math.abs(x1 - x0);
+    const dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (let k = 0; k < 2048; k++) {
+      this.set(x0, y0, c);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) {
+        err += dy;
+        x0 += sx;
+      }
+      if (e2 <= dx) {
+        err += dx;
+        y0 += sy;
+      }
+    }
+  };
   /** a soft contact shadow row under a prop: a fine checker reads as a half-tone */
   Buf.prototype.contact = function (x0, x1, y, c, solid0, solid1) {
     for (let x = R(x0); x <= R(x1); x++) {
@@ -721,6 +746,45 @@
     }
   }
 
+  /**
+   * A sailboat's standing rig at rest on its waterline, leaning by `lean` px
+   * at the masthead (the shift grows with height above the deck): mast,
+   * spreaders, forestay with the furled headsail, a fine broken backstay.
+   */
+  function bakeRig(k, lean, C) {
+    const b = k.b;
+    const flip = b.dir < 0;
+    const sx = (lx) => b.x + (flip ? -lx : lx);
+    const wl = b.wl;
+    const mx = sx(k.mx);
+    const deck = wl - 7;
+    const top = wl - b.mast;
+    const H = deck - top;
+    const at = (y) => mx + R((lean * (deck - y)) / H);
+    const hx = at(top);
+    const bowX = sx(k.hx1 + 1);
+    const sternX = sx(k.hx0 + 1);
+    const B = new Buf(Math.min(bowX, sternX) - 4, top - 2, Math.abs(bowX - sternX) + 9, b.mast + 4);
+    const bs = Math.max(1, Math.abs(sternX - hx), wl - 8 - top);
+    for (let s = 1; s < bs; s++) {
+      const x = R(hx + ((sternX - hx) * s) / bs);
+      const y = R(top + 1 + ((wl - 8 - top - 1) * s) / bs);
+      if (((x + y) & 1) === 0 || s % 3 === 0) B.set(x, y, C.wire);
+    }
+    B.line(hx, top + 1, bowX, wl - 7, C.wire);
+    // furled headsail wrapped round the lower forestay (a second, canvas-coloured line)
+    const fy0 = R(top + H * 0.4);
+    for (let y = fy0; y <= wl - 8; y++) {
+      const u = (y - top - 1) / (wl - 7 - top - 1);
+      B.set(R(hx + (bowX - hx) * u) - b.dir, y, k.cov);
+    }
+    // mast: a pale aluminium spar, spreaders a little above half height
+    for (let y = top; y <= deck; y++) B.set(at(y), y, C.mast);
+    const spy = R(top + H * 0.42);
+    B.hl(at(spy) - 2, at(spy) + 2, spy, C.mastD);
+    return B.bake();
+  }
+
   function drawBoat(g, t, k, C) {
     const b = k.b;
     const { bob, lean, ts } = boatMotion(b, t);
@@ -738,34 +802,11 @@
     if (flip) g.sprite(k.art.cv, b.x - (k.art.x + k.art.cv.width - 1), k.art.y + wl, true);
     else g.sprite(k.art.cv, k.art.x + b.x, k.art.y + wl);
     if (b.kind !== 'sail') return;
-    // the rig leans as one with the roll: x shift grows with height above the deck
-    const mx = sx(k.mx);
-    const deck = wl - 7;
+    // the rig (baked per lean, see bakeRig) rides on the hull's bob
+    const rig = k.rigs[lean + 1];
+    g.sprite(rig.cv, rig.x, rig.y + bob);
+    const hx = sx(k.mx) + lean;
     const top = wl - b.mast;
-    const H = deck - top;
-    const at = (y) => mx + R((lean * (deck - y)) / H);
-    const hx = at(top);
-    const bowX = sx(k.hx1 + 1);
-    const sternX = sx(k.hx0 + 1);
-    // backstay (a fine, broken wire) and forestay
-    const bs = Math.max(1, Math.abs(sternX - hx), wl - 8 - top);
-    for (let s = 1; s < bs; s++) {
-      const x = R(hx + ((sternX - hx) * s) / bs);
-      const y = R(top + 1 + ((wl - 8 - top - 1) * s) / bs);
-      if (((x + y) & 1) === 0 || s % 3 === 0) g.px(x, y, C.wire);
-    }
-    g.line(hx, top + 1, bowX, wl - 7, C.wire);
-    // furled headsail wrapped round the lower forestay (a second, canvas-coloured line)
-    const fy0 = R(top + H * 0.4);
-    for (let y = fy0; y <= wl - 8; y++) {
-      const u = (y - top - 1) / (wl - 7 - top - 1);
-      const x = R(hx + (bowX - hx) * u);
-      g.px(x - b.dir, y, k.cov);
-    }
-    // mast: a pale aluminium spar, spreaders a little above half height
-    for (let y = top; y <= deck; y++) g.px(at(y), y, C.mast);
-    const spy = R(top + H * 0.42);
-    g.hline(at(spy) - 2, at(spy) + 2, spy, C.mastD);
     // masthead: a little red burgee that flicks in the breeze
     const fl = T.noise(ts, 1.1, 700 + b.seed) + 0.3 * breeze(ts) > 0.6 ? 1 : 0;
     const bd = flip ? 1 : -1; // streams aft
@@ -882,19 +923,24 @@
   function buildMarina(ed) {
     const pl = HD.PLACES[ed.place];
     if (!pl || pl.id !== 'marina') return null;
-    const boats = BOATS.map((b) => Object.assign({ b, cov: b.cover ? A(b.cover) : null }, b.kind === 'yacht' ? bakeYacht(b) : bakeSailboat(b)));
+    const cols = {
+      mast: A('#d4dae2'),
+      mastD: A('#8e98a4'),
+      wire: A('#a8b2bc'),
+      rope: A('#e8dec8'),
+      dark: A('#2a4468'),
+      mid: A('#b4d0e4'),
+      light: A('#d8eaf6'),
+      burgee: A('#e0303c'),
+    };
+    const boats = BOATS.map((b) => {
+      const k = Object.assign({ b, cov: b.cover ? A(b.cover) : null }, b.kind === 'yacht' ? bakeYacht(b) : bakeSailboat(b));
+      if (b.kind === 'sail') k.rigs = [-1, 0, 1].map((lean) => bakeRig(k, lean, cols));
+      return k;
+    });
     return {
       boats,
-      cols: {
-        mast: A('#d4dae2'),
-        mastD: A('#8e98a4'),
-        wire: A('#a8b2bc'),
-        rope: A('#e8dec8'),
-        dark: A('#2a4468'),
-        mid: A('#b4d0e4'),
-        light: A('#d8eaf6'),
-        burgee: A('#e0303c'),
-      },
+      cols,
       castle: pl.castle ? bakeCastle(pl) : null,
       flag: As(['#a01822', '#e83a3a', '#ff7a6a']),
     };

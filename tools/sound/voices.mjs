@@ -131,7 +131,7 @@ function modal(f, partials, o, r) {
     parts.push({ inc: fr / SR, amp: amp * soft, k: Math.exp(-1 / (tau * SR)), ph: o.randPhase ? r.next() : 0 });
     maxTau = Math.max(maxTau, tau);
   }
-  const natural = maxTau * 7; // -60 dB
+  const natural = maxTau * 5.5; // about -48 dB, then a smooth release
   const dur = Math.min(natural, hold + rel);
   const len = Math.max(64, Math.ceil(dur * SR));
   const out = new Float32Array(len);
@@ -503,4 +503,17 @@ export function jingle(p, r) {
   return out;
 }
 
-export const VOICES = { epiano, bass, pluck, bell, celesta, vibes, marimba, zither, airy, pad, drone, tabla, kick, brushSnare, rim, hat, shaker, wood, jingle };
+/** one soft brush sweep across a beat (overlapping sweeps make the swirl) */
+export function swirl(p, r) {
+  const len = Math.round(p.len * 1.3 * SR);
+  const out = new Float32Array(len);
+  const bp = new SVF(2300, 0.8), lp = new OnePole(4800);
+  for (let n = 0; n < len; n++) {
+    bp.process(r.next() * 2 - 1);
+    const u = n / len;
+    out[n] = lp.process(bp.bp) * Math.sin(Math.PI * u) ** 2 * p.vel * 0.45;
+  }
+  return out;
+}
+
+export const VOICES = { swirl,  epiano, bass, pluck, bell, celesta, vibes, marimba, zither, airy, pad, drone, tabla, kick, brushSnare, rim, hat, shaker, wood, jingle };

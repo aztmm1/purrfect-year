@@ -44,14 +44,16 @@
     },
   ];
   const ENTRANCE = { x0: 220, x1: 252, door0: 228, door1: 244 };
-  // fan palms: base (x, y), crown height, lean, size
+  // fan palms: base (x, y), crown height, lean, size. All stand inside the
+  // building footprint (x 138..332), clear of the tower edges, the corner
+  // drapes and the brick castle anchor on the promenade (x 337..367).
   const PALMS = [
-    { x: 122, base: 205, top: 98, lean: -3, s: 1.1, seed: 1 },
-    { x: 133, base: 205, top: 134, lean: 1, s: 0.9, seed: 2 },
+    { x: 141, base: 205, top: 98, lean: -3, s: 1.1, seed: 1 },
+    { x: 148, base: 205, top: 136, lean: 1, s: 0.9, seed: 2 },
     { x: 178, base: 205, top: 156, lean: -1, s: 0.85, seed: 3 },
     { x: 296, base: 205, top: 160, lean: 1, s: 0.85, seed: 4 },
-    { x: 337, base: 205, top: 138, lean: -1, s: 0.9, seed: 5 },
-    { x: 349, base: 205, top: 102, lean: 3, s: 1.1, seed: 6 },
+    { x: 321, base: 205, top: 140, lean: -1, s: 0.9, seed: 5 },
+    { x: 328, base: 205, top: 102, lean: 3, s: 1.1, seed: 6 },
   ];
 
   // ------------------------------------------------------------ colour
@@ -96,6 +98,10 @@
     canopy: ['#ffffff', '#eceae4', '#cdc9c0', '#a8a39a'],
     bronze: ['#2d2a26', '#4a453e', '#6e675c'],
     leaf: ['#173f22', '#215430', '#2e6c3a', '#3f8744', '#58a24f', '#7dbc63', '#a5d27d'],
+    // palm fronds, trunk and dead skirt: the same ramps as the street palms
+    frond: ['#1c3418', '#24401f', '#365c2a', '#4e7a36', '#6c9a44', '#90b858', '#b4d47a'],
+    palmTrunk: ['#5e5040', '#7c6c56', '#9a8a70', '#b4a68a'],
+    palmDry: ['#4a3a26', '#5a4630', '#7a6040', '#9a7c50'],
     hedge: ['#1a4626', '#235a30', '#2f6f3a', '#3d8645', '#52a050', '#73b862', '#98cc7c'],
     bloom: ['#5c1238', '#8a1f52', '#b82d6c', '#da4489', '#f06aa6', '#ff9cc6'],
     trunk: ['#5d4c3e', '#7a6754', '#97836b', '#b5a184', '#cdbb9c'],
@@ -160,7 +166,7 @@
     if (v < 0.12) tone -= 1.2 * (1 - v / 0.12);
     // the reflected horizon: pale sky just above it, the far shore and the bay below
     const hz = 0.66;
-    if (v >= hz) tone += 1.1 + 0.9 * ((v - hz) / (1 - hz));
+    if (v >= hz) tone += 0.6 + 0.6 * ((v - hz) / (1 - hz));
     if (noGlint) return tone;
     // diagonal sky glints running down to the left
     const d = i + (fy - t.top) * 0.52;
@@ -175,10 +181,15 @@
     const CAP = PR(C.cap);
     // at night the mirror glass reflects a dark sky: shift the whole ramp darker
     const nshift = m === 'night' ? 2.6 : m === 'dusk' ? 1.4 : 0;
+    // the body glass never goes darker than this; the darkest steps are kept
+    // for the narrow end face and the floor lines
+    const bodyMax = 8 + Math.ceil(nshift);
     return HD.bake(180, 160, (g) => {
       const OX = 146;
       const OY = 28;
       for (const t of TOWERS) {
+        const painted = new Int8Array(t.w * 200); // glass index painted per pixel (this mode)
+        const glint = new Uint8Array(t.w * 200);
         for (let i = 0; i < t.w; i++) {
           const x = t.x0 + i;
           const roof = t.roof[i];
@@ -188,24 +199,36 @@
             const plain = glassTone(t, x, y, true) + nshift;
             const gx = Math.abs(glassTone(t, x + 1, y, true) - glassTone(t, x - 1, y, true)) * 0.5;
             const gy = Math.abs(glassTone(t, x, y + 1, true) - glassTone(t, x, y - 1, true)) * 0.5;
-            const seam = plain - tone > 0.05 ? 0 : clamp(Math.max(gx, gy) * 0.9, 0.03, 0.3);
+            const isGlint = plain - tone > 0.05;
+            const seam = isGlint ? 0 : clamp(Math.max(gx, gy) * 0.9, 0.03, 0.3);
             const fl = Math.floor(tone);
             const fr = tone - fl;
             let idx = fr > 0.5 + seam || (fr > 0.5 - seam && (x + y) & 1) ? fl + 1 : fl;
-            idx = clamp(idx, 0, GL.length - 1);
-            if (nshift === 0) t.tone[(y - t.top + 8) * t.w + i] = idx; // daylight tones: reflections and cables read them
+            idx = clamp(idx, 0, Math.min(bodyMax, GL.length - 1));
+            const o = (y - t.top + 8) * t.w + i;
+            painted[o] = idx;
+            glint[o] = isGlint ? 1 : 0;
             g.px(x - OX, y - OY, GL[idx]);
           }
         }
-        // floor lines (thin dark spandrels that bow with the facade)
+        // floor lines (thin dark spandrels that bow with the facade): always
+        // exactly one step darker than the glass painted under them, and
+        // broken for a pixel where a glint crosses so the glints stay clean
         for (const ln of t.lines) {
           for (let i = 1; i < t.w - 2; i++) {
             const x = t.x0 + i;
             const y = ln[i];
-            const tone = glassTone(t, x, y) + nshift;
-            const idx = clamp(R(tone) + 1, 0, GL.length - 1);
+            const o = (y - t.top + 8) * t.w + i;
+            if (glint[o]) continue;
+            const idx = clamp(painted[o] + 1, 2, GL.length - 1);
+            painted[o] = idx;
             g.px(x - OX, y - OY, GL[idx]);
           }
+        }
+        // daylight tones: the cloud reflections and the gondola cables read them
+        if (nshift === 0) {
+          t.tone.set(painted);
+          t.glint = glint;
         }
         // crescent tips: a bright rim on the left, the narrow dark end face on the right
         for (let y = t.top + 1; y <= t.base; y++) {
@@ -373,7 +396,8 @@
       const OY = 174;
       const px = (x, y, c) => g.px(x - OX, y - OY, c);
       const rect = (x, y, w, h, c) => g.rect(x - OX, y - OY, w, h, c);
-      // pool-deck rail and umbrellas where the podium roof shows
+      // pool-deck rail where the podium roof shows, and one umbrella on the
+      // deck between the towers (the corners are kept for the palms)
       for (const [a, b] of [
         [POD.x0, TOWERS[0].x0 - 1],
         [TOWERS[0].x1 + 1, TOWERS[1].x0 - 1],
@@ -390,13 +414,12 @@
         }
       }
       const umbrella = (x, c0, c1) => {
-        rect(x - 1, 175, 3, 1, c0);
-        rect(x - 3, 176, 7, 1, c0);
-        rect(x - 4, 177, 9, 1, c1);
+        px(x, 175, c0);
+        rect(x - 2, 176, 5, 1, c0);
+        rect(x - 3, 177, 7, 1, c1);
         for (let y = 178; y <= 183; y++) px(x, y, PD[4]);
       };
-      umbrella(144, UM[0], UM[1]);
-      umbrella(324, UM[2], UM[3]);
+      umbrella(235, UM[2], UM[3]);
       // body
       rect(POD.x0, 184, POD.x1 - POD.x0 + 1, 22, PD[1]);
       rect(POD.x0, 184, POD.x1 - POD.x0 + 1, 1, PD[0]);
@@ -495,7 +518,7 @@
       // palm trunks standing in front of the podium throw thin shadows on it by day
       if (!dark) {
         for (const p of PALMS) {
-          if (p.x < POD.x0 + 2 || p.x > POD.x1 - 2) continue;
+          if (p.x < POD.x0 + 12 || p.x > POD.x1 - 12) continue;
           const sx = p.x - 3;
           for (let y = 186; y <= 203; y++) {
             const onGlass = y >= 190 && (sx < 204 || sx > ENTRANCE.x1) && y !== 194;
@@ -510,6 +533,36 @@
       // corners
       rect(POD.x0, 184, 1, 22, PD[0]);
       rect(POD.x1, 184, 1, 22, PD[3]);
+      // bougainvillea draped over the two podium corners: a clump on the
+      // parapet and a few solid strands trailing down the wall, each ending
+      // in a small bloom; the palms at the corners stand in front of them
+      const HG = PR(C.hedge);
+      const BL = PR(C.bloom);
+      const drape = (cx, strands) => {
+        for (const [sx, len, bx] of strands) {
+          for (let k = 0; k < len; k++) {
+            const y = 187 + k;
+            const h = HD.hash(sx, y, 61);
+            px(sx, y, h < 0.22 ? HG[k < 3 ? 3 : 2] : BL[k < 3 ? 4 : h > 0.7 ? 4 : 3]);
+          }
+          // the bloom at the tip: 2 x 2, lit on top
+          const by = 187 + len;
+          px(bx, by, BL[4]);
+          px(bx + 1, by, BL[bx < sx ? 4 : 3]);
+          px(bx, by + 1, BL[2]);
+          px(bx + 1, by + 1, BL[2]);
+        }
+        bloom(px, BL, HG, cx, 185, 4, 2, 31);
+      };
+      // [strand x, length, bloom left x]
+      drape(142, [[139, 12, 138], [144, 9, 144], [146, 5, 145]]);
+      drape(328, [[331, 12, 331], [326, 8, 325], [324, 5, 324]]);
+      // a few leaves on the shaded (left) side of each drape
+      px(138, 190, HG[2]);
+      px(138, 193, HG[1]);
+      px(143, 189, HG[2]);
+      px(323, 188, HG[2]);
+      px(323, 190, HG[1]);
     });
   }
 
@@ -547,25 +600,11 @@
       const OX = 112;
       const OY = 172;
       const px = (x, y, c) => g.px(x - OX, y - OY, c);
-      // bougainvillea draped over the podium corners, trailing down the wall
-      const drape = (x, dir) => {
-        for (let k = 0; k < 6; k++) {
-          const tx = x + dir * (k + (k > 2 ? 1 : 0));
-          const len = [11, 8, 13, 6, 9, 4][k];
-          for (let y = 187; y < 187 + len; y++) {
-            const h = HD.hash(tx, y, 61);
-            if (h < 0.25) continue;
-            px(tx, y, h < 0.45 ? HG[2] : BL[y > 187 + len - 3 ? 2 : h > 0.8 ? 4 : 3]);
-          }
-        }
-        bloom(px, BL, HG, x + dir * 3, 185, 4, 2, 31);
-      };
-      drape(POD.x0 + 1, 1);
-      drape(POD.x1 - 1, -1);
-      // clipped hedges in blocks, the doorway kept clear
+      // clipped hedges in blocks along the podium foot (ending just past the
+      // corners, clear of the castle anchor), the doorway kept clear
       const runs = [
-        [114, ENTRANCE.x0 + 1],
-        [ENTRANCE.x1 - 1, 358],
+        [POD.x0 - 3, ENTRANCE.x0 + 1],
+        [ENTRANCE.x1 - 1, POD.x1 + 3],
       ];
       for (const [a, b] of runs) {
         for (let x = a; x <= b; x++) {
@@ -586,102 +625,144 @@
           if (((x - a) % 19 === 0) && x > a) px(x, top + 2, HG[2]);
         }
       }
-      // mounds of magenta bracts along the hedge tops, spilling down the front
+      // drifts of magenta bougainvillea growing over the hedge: a few larger
+      // masses of different sizes, some rising above the clipped top, some
+      // spilling down to the foot, with plain hedge between them
+      // [centre x, width, crest y, spills to the foot]
+      const DRIFTS = [
+        [142, 9, 197, 0],
+        [163, 15, 196, 1],
+        [190, 10, 199, 0],
+        [261, 12, 198, 1],
+        [284, 16, 196, 0],
+        [306, 8, 200, 1],
+        [325, 11, 197, 0],
+      ];
       const rng = HD.rng(9071);
-      for (let x = 117; x < 356; ) {
-        const rx = 2 + R(rng() * 2.2);
-        const ry = 2 + R(rng());
-        const cx = x + rx;
-        if (cx + rx > ENTRANCE.x0 - 1 && cx - rx < ENTRANCE.x1 + 1) {
-          x = ENTRANCE.x1 + 2;
-          continue;
+      for (const [dc, dw, crest, spill] of DRIFTS) {
+        // the body of the drift: overlapping mounds, tallest in the middle
+        const n = Math.max(2, R(dw / 4));
+        for (let k = 0; k < n; k++) {
+          const u = n === 1 ? 0.5 : k / (n - 1);
+          const cx = R(dc + (u - 0.5) * (dw - 5) + (rng() - 0.5) * 2);
+          const mid = 1 - Math.abs(u - 0.5) * 2;
+          const rx = clamp(R(1 + mid * 3 + rng() * 1.4), 1, 5);
+          const ry = 2 + (mid > 0.5 && rng() < 0.6 ? 1 : 0);
+          const cy = clamp(R(crest + ry + (1 - mid) * 2 + rng()), 197, 203);
+          bloom(px, BL, HG, cx, cy, rx, ry, 41 + k);
         }
-        if (cx > 204 && cx < 222) {
-          x += 4; // keep the plaque clear
-          continue;
+        if (spill) {
+          const sx = R(dc + (rng() - 0.5) * dw * 0.5);
+          bloom(px, BL, HG, sx, 203, 2, 2, 43);
+          bloom(px, BL, HG, sx + (rng() < 0.5 ? -3 : 3), 204, 1, 1, 44);
         }
-        bloom(px, BL, HG, cx, 199 + R(rng() * 1.5), rx, ry, 41);
-        if (rng() < 0.6) bloom(px, BL, HG, cx + R((rng() - 0.5) * 5), 202 + R(rng()), 1 + R(rng()), 1, 43);
-        x += rx * 2 + 1 + R(rng() * 5);
       }
+      // a couple of lone sprigs in the plain stretches
+      for (const [sx, sy] of [[178, 200], [272, 201], [316, 199]]) bloom(px, BL, HG, sx, sy, 1, 1, 47);
     });
   }
 
   // ------------------------------------------------------------ palms
-  // a palm: trunk frames for sway offsets -2..2, crown frames for flutter 0..1
+  // A tall, skinny fan palm. The trunk is one fixed curve (its jogs never
+  // move); only its top third follows the sway, by at most one pixel. The
+  // crown is a starburst of separate fronds: a 1-px stalk ending in a narrow
+  // fan of spiky leaflet tips, upper fronds reaching up, lower ones drooping,
+  // sky showing between them, a dark heart and a short brown skirt of dead
+  // fronds under the head, like the street palms.
   function bakePalm(p) {
-    const TR = PR(C.trunk);
-    const SK = PR(C.skirt);
-    const LF = PR(C.leaf);
+    const TR = PR(C.palmTrunk);
+    const SK = PR(C.palmDry);
+    const FR = PR(C.frond);
     const H = p.base - p.top;
     const trunks = [];
-    for (let sw = -2; sw <= 2; sw++) {
+    for (let sw = -1; sw <= 1; sw++) {
       trunks.push(
         HD.bake(24, H + 4, (g) => {
           const cx = 12;
           for (let y = 0; y <= H; y++) {
             const up = 1 - y / H; // 1 at the crown, 0 at the base
-            const xi = R(cx + p.lean * Math.pow(up, 1.6) + sw * up * up);
+            const xi = R(cx + p.lean * Math.pow(up, 1.6)) + (up > 0.7 ? sw : 0);
             const ring = (y + p.seed) % 4 === 0;
-            g.px(xi, y, TR[1]);
+            g.px(xi, y, TR[ring ? 0 : 1]);
             g.px(xi + 1, y, TR[ring ? 2 : 3]);
             if (y > H - 3) g.px(xi - 1, y, TR[0]); // a slightly swollen foot
-          }
-          // trimmed leaf boots just under the head
-          for (let y = 0; y < 4; y++) {
-            const xi = R(cx + p.lean + sw);
-            g.px(xi - 1, y, SK[1]);
-            g.px(xi, y, SK[y & 1 ? 2 : 1]);
-            g.px(xi + 1, y, SK[3]);
-            if (y < 2) g.px(xi + 2, y, SK[2]);
           }
         })
       );
     }
+    // frond directions in degrees (0 = right, 90 = up)
+    const DIRS = [-40, 0, 36, 70, 106, 142, 180, 220];
     const crowns = [];
-    // leaf directions (radians, 0 = right, up positive): a fan head with drooping lower leaves
-    const DIRS = [0.25, 0.62, 1.0, 1.38, 1.78, 2.15, 2.55, 2.95, -0.2, 3.35, -0.75, -1.45, -2.25];
     for (let fl = 0; fl < 2; fl++) {
       crowns.push(
-        HD.bake(34, 28, (g) => {
-          const cx = 17;
-          const cy = 11;
-          const s = p.s;
+        HD.bake(36, 32, (g) => {
+          const cx = 18;
+          const cy = 12;
           const rng = HD.rng(p.seed * 31 + 7);
-          const leaves = DIRS.map((a, k) => ({
-            a: a + (rng() - 0.5) * 0.25 + (fl ? 0.07 * (k % 2 ? 1 : -1) : 0),
-            L: (a < -0.3 ? 4.8 : 6.2 + rng() * 1.4) * s,
-          }));
-          leaves.sort((A, B) => Math.sin(A.a) - Math.sin(B.a)); // lower leaves first
-          for (const lf of leaves) {
-            const a = lf.a;
-            const L = lf.L;
+          // the dead skirt hangs under the head, behind the fronds
+          for (let i = -2; i <= 2; i++) {
+            const len = 2 + R(rng() * 1.6) + (i === 0 ? 1 : 0);
+            for (let j = 0; j < len; j++) {
+              const x = cx + i + (j > 1 && i ? Math.sign(i) : 0);
+              g.px(x, cy + 1 + j, SK[j === len - 1 ? 0 : i > 0 ? 3 : i < 0 ? 1 : 2]);
+            }
+          }
+          const fronds = DIRS.map((d, k) => {
+            const a = ((d + (rng() - 0.5) * 14) * Math.PI) / 180 + (fl ? 0.07 * (k % 2 ? 1 : -1) : 0);
+            const up = Math.sin(a);
+            return { a, L: p.s * (up > 0.3 ? 8.5 + rng() * 1.6 : 7 + rng() * 1.3), up };
+          });
+          fronds.sort((A, B) => A.up - B.up); // lower fronds first
+          for (const f of fronds) {
+            const { a, L, up } = f;
             const ca = Math.cos(a);
             const sa = Math.sin(a);
-            const droop = sa < -0.3 ? 0.3 : sa < 0.4 ? 0.5 : 0.2;
+            // upper fronds arc out gently, the side and lower ones droop
+            const droop = up > 0.6 ? 0.12 : up > -0.2 ? 0.38 : 0.26;
+            const P0 = (r) => [cx + r * ca * 1.05, cy - r * sa * 0.85 + (droop * r * r) / L];
             const lit = ca * 0.55 + sa * 0.85; // sun from the upper right
-            const base = lit > 0.6 ? 5 : lit > 0.15 ? 4 : lit > -0.4 ? 3 : 2;
-            const at = (r, da) => [R(cx + r * Math.cos(a + da)), R(cy - r * Math.sin(a + da) + (droop * r * r) / L)];
-            for (let r = 1; r < L * 0.4; r += 0.6) {
-              const q = at(r, 0);
-              g.px(q[0], q[1], LF[Math.max(1, base - 2)]);
+            const base = lit > 0.6 ? 5 : lit > 0.1 ? 4 : lit > -0.4 ? 3 : 2;
+            // the stalk
+            const r0 = L * 0.48;
+            for (let r = 1.5; r < r0; r += 0.5) {
+              const q = P0(r);
+              g.px(R(q[0]), R(q[1]), FR[Math.max(1, base - 2)]);
             }
             // the fan: three rays of leaflets spreading to spiky tips
-            for (let r = L * 0.35; r <= L + 0.01; r += 0.5) {
-              const spread = 0.08 + ((r - L * 0.35) / L) * 0.62;
-              for (const da of [-spread, -spread * 0.5, 0, spread * 0.5, spread]) {
-                if (da !== 0 && r > L - 0.6 && Math.abs(da) < spread) continue; // spiky tips
-                const q = at(r, da);
-                g.px(q[0], q[1], LF[clamp(base + (da > 0 ? 1 : da < 0 ? -1 : 0), 1, 6)]);
+            for (let r = r0; r <= L + 0.01; r += 0.4) {
+              const q = P0(r);
+              const q2 = P0(r + 0.3);
+              let tx = q2[0] - q[0];
+              let ty = q2[1] - q[1];
+              const tn = Math.hypot(tx, ty) || 1;
+              tx /= tn;
+              ty /= tn;
+              // perpendicular, pointing to the upper side of the frond
+              let nx = ty;
+              let ny = -tx;
+              if (ny > 0 || (ny === 0 && nx < 0)) {
+                nx = -nx;
+                ny = -ny;
+              }
+              const u = (r - r0) / (L - r0);
+              const w = 0.4 + 1.7 * u;
+              g.px(R(q[0]), R(q[1]), FR[base]);
+              // the side rays split off the midrib and end a little short of
+              // it, so each frond finishes in three separate spikes
+              if (u > 0.18 && r <= L - 1) {
+                g.px(R(q[0] + nx * w), R(q[1] + ny * w), FR[Math.min(6, base + 1)]);
+                g.px(R(q[0] - nx * w), R(q[1] - ny * w), FR[Math.max(1, base - 1)]);
               }
             }
             if (lit > 0.3) {
-              const q = at(L, 0);
-              g.px(q[0], q[1], LF[6]);
+              const q = P0(L);
+              g.px(R(q[0]), R(q[1]), FR[6]);
             }
           }
-          g.rect(cx - 1, cy - 1, 3, 2, LF[1]);
-          g.px(cx + 1, cy - 1, LF[3]);
+          // the dark heart where the fronds meet the trunk
+          g.rect(cx - 1, cy - 1, 3, 2, FR[0]);
+          g.px(cx + 1, cy - 1, FR[2]);
+          g.px(cx, cy + 1, SK[0]);
         })
       );
     }
@@ -719,9 +800,12 @@
     E.px(w.x + w.w - 2, w.y + 1, curD);
     E.px(w.x + w.w - 2, w.y + 3, curD);
     E.px(w.x + w.w - 3, w.y + 6, curD);
-    if (who === 'alone' || who === 'together') {
-      const pl = HD.place();
-      if (pl.mascot) HD.mascot.draw(g, t, pl.mascot.x, pl.mascot.y);
+    // the series cat sits here only if the place gives him an anchor (no
+    // current entry does: this window is too small for him); otherwise the
+    // room keeps its plant and lamp so it is never bare
+    const pl = HD.place();
+    if ((who === 'alone' || who === 'together') && pl.mascot) {
+      HD.mascot.draw(g, t, pl.mascot.x, pl.mascot.y);
       if (who === 'together' && pl.partner && HD.drawPartner) HD.drawPartner(g, t, pl.partner.x, pl.partner.base);
     } else {
       // a potted plant on the sill and a lamp glowing warm on a side table
@@ -813,8 +897,14 @@
             flush(x - 1);
             continue;
           }
-          const base = tw.tone[(y - tw.top + 8) * tw.w + i];
-          const c = GL[Math.max(0, base - (edge ? 1 : 2))];
+          const o = (y - tw.top + 8) * tw.w + i;
+          const base = tw.tone[o];
+          // never stack a cloud on a glint: the glint stays the brightest thing
+          if (base <= 2 || (tw.glint && tw.glint[o])) {
+            flush(x - 1);
+            continue;
+          }
+          const c = GL[Math.max(3, base - (edge ? 1 : 2))];
           if (c !== rc || y !== ry) {
             flush(x - 1);
             rx0 = x;
@@ -931,12 +1021,12 @@
     for (let i = 0; i < PALMS.length; i++) {
       const p = PALMS[i];
       const pa = A.palms[i];
-      const amp = p.s > 1 ? 1.8 : 1.2;
-      const sw = clamp(R(br * amp + 0.35 * T.wave(t, 9.7, i * 0.17)), -2, 2);
-      g.sprite(pa.trunks[sw + 2], p.x - 12, p.top);
+      const amp = p.s > 1 ? 1.4 : 1.0;
+      const sw = clamp(R(br * amp + 0.35 * T.wave(t, 9.7, i * 0.17)), -1, 1);
+      g.sprite(pa.trunks[sw + 1], p.x - 12, p.top);
       const fl = T.noise(ts, 1.3, 77 + i) > 0.5 ? 1 : 0;
-      const topX = R(p.x + p.lean + sw);
-      g.sprite(pa.crowns[fl], topX - 17, p.top - 11);
+      const topX = R(12 + p.lean) - 12 + p.x + sw;
+      g.sprite(pa.crowns[fl], topX - 18, p.top - 12);
     }
   }
 
@@ -946,38 +1036,51 @@
   }
 
   // ------------------------------------------------------------ lights
-  // palm shadow polygons, cached per light mode and sway step
+  // palm shadow polygons, cached per light mode and sway step. They use the
+  // street module's daylight projection (a point h px up lands at
+  // x + vx * h, base + vy * h) and its shade strength, so they fall the same
+  // way as the lamp and street-palm shadows on the promenade.
+  const SUNVEC = { day: { vx: -0.34, vy: 0.15, k: 0.4 }, golden: { vx: -1.15, vy: 0.15, k: 0.5 } };
   const shadowCache = new Map();
   function palmShadows(lt, sw) {
+    const sv = SUNVEC[lt.mode];
+    if (!sv) return [];
     const key = lt.mode + sw;
     let list = shadowCache.get(key);
     if (list) return list;
     list = [];
+    const { vx, vy, k } = sv;
+    const y0 = 206; // the promenade's top edge, just in front of the palm foot
     for (const p of PALMS) {
       const h = p.base - p.top;
-      let dx = p.x - lt.sun.x;
-      let dy = p.base - lt.sun.y;
-      const n = Math.hypot(dx, dy) || 1;
-      const len = h * (lt.mode === 'golden' ? 0.62 : 0.34);
-      dx = (dx / n) * len;
-      dy = (dy / n) * len * 0.22; // the promenade is seen at a low angle
-      const x0 = p.x + 1;
-      const y0 = p.base + 1;
-      const ex = x0 + dx + sw;
-      const ey = y0 + dy;
-      list.push({ poly: [[x0, y0], [x0 + 1.4, y0], [ex + 0.8, ey], [ex - 0.6, ey]], k: 0.24 });
-      // the crown: a flat, spiky star of fronds on the paving
-      const rx = 3.2 * p.s;
-      const cxs = ex - 1;
-      const oct = [];
-      for (let k = 0; k < 8; k++) oct.push([cxs + Math.cos((k / 8) * T.TAU) * rx, ey + Math.sin((k / 8) * T.TAU) * 1.3]);
-      list.push({ poly: oct, k: 0.24 });
-      for (let k = 0; k < 7; k++) {
-        const a = (k / 7) * T.TAU + p.seed;
-        const ca = Math.cos(a);
-        const sa = Math.sin(a) * 0.3;
-        const l = (6 + (k % 3)) * p.s;
-        list.push({ poly: [[cxs - sa * 3, ey + ca * 0.6], [cxs + ca * l, ey + sa * l], [cxs + sa * 3, ey - ca * 0.6]], k: 0.24 });
+      const x0 = p.x;
+      // the crown's shadow centre
+      const cxs = p.x + p.lean + sw + vx * h;
+      const cys = y0 + vy * h;
+      // the trunk: a 2-px stick from the foot to the crown
+      list.push({ poly: [[x0, y0], [x0 + 2, y0], [cxs + 1.5, cys], [cxs - 0.5, cys]], k });
+      // the heart of the crown: an oval at least 3 px tall
+      const core = [];
+      for (let j = 0; j < 10; j++) core.push([cxs + Math.cos((j / 10) * T.TAU) * 3.2 * p.s, cys + Math.sin((j / 10) * T.TAU) * 1.9]);
+      list.push({ poly: core, k });
+      // the fronds: a squashed star of tapering rays, about 2 px thick
+      const n = 8;
+      for (let j = 0; j < n; j++) {
+        const a = ((j + 0.5) / n) * T.TAU + p.seed * 0.7;
+        const dx = Math.cos(a);
+        const dy = Math.sin(a) * 0.38; // the ground is seen at a low angle
+        const l = (6.2 + ((j * 5 + p.seed) % 3) * 0.9) * p.s;
+        const dn = Math.hypot(dx, dy);
+        // perpendicular in screen space
+        const nx = -dy / dn;
+        const ny = dx / dn;
+        const wb = 1.1; // half thickness at the base
+        const wt = 0.7; // half thickness at the tip
+        const bx = cxs + dx * 2;
+        const by = cys + dy * 2;
+        const tx = cxs + dx * l;
+        const ty = cys + dy * l;
+        list.push({ poly: [[bx + nx * wb, by + ny * wb], [tx + nx * wt, ty + ny * wt], [tx + dx * 0.8, ty + dy * 0.8], [tx - nx * wt, ty - ny * wt], [bx - nx * wb, by - ny * wb]], k });
       }
     }
     shadowCache.set(key, list);

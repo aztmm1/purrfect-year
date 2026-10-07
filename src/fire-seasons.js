@@ -100,10 +100,11 @@
     // small high one over the roof
     apt1: {
       rise: 198,
-      horizon: 104,
+      riverRise: 150,
+      horizon: 128,
       farHorizon: 140,
       zones: [
-        { x0: 328, x1: 478, y0: 12, y1: 90, w: 0.62, rk: 1 },
+        { x0: 328, x1: 478, y0: 12, y1: 100, w: 0.62, rk: 1, front: true },
         { x0: 4, x1: 142, y0: 76, y1: 98, w: 0.24, rk: 0.62 },
         { x0: 176, x1: 322, y0: 8, y1: 26, w: 0.14, rk: 0.52, noWillow: true },
       ],
@@ -193,9 +194,9 @@
   // starburst between them; high over the plaza where her friends cheer
   const GOAL = {
     apt1: [
-      [0.3, 'peony', 362, 70, 14, 'gold', { nk: 0.9 }],
-      [1.05, 'peony', 446, 46, 15, 'red', { nk: 0.9 }],
-      [1.85, 'chrys', 404, 24, 13, 'white', { nk: 0.9, fill: true, thin: true, sag: 1.25 }],
+      [0.3, 'peony', 356, 76, 15, 'gold', { nk: 0.9 }],
+      [1.05, 'peony', 450, 64, 15, 'red', { nk: 0.9 }],
+      [1.85, 'chrys', 378, 24, 13, 'white', { nk: 0.9, fill: true, thin: true, sag: 1.25 }],
     ],
     fallback: [[150, 158]],
   };
@@ -226,6 +227,25 @@
     return top;
   }
 
+  /** column tops of the far city behind the place (HD.backdrops.top answers for HD.edition), or null */
+  function backdropTops(ed) {
+    if (!HD.backdrops || !HD.backdrops.top) return null;
+    const prev = HD.edition;
+    try {
+      HD.edition = ed;
+      const top = new Float32Array(HD.W);
+      for (let x = 0; x < HD.W; x++) {
+        const y = HD.backdrops.top(x);
+        top[x] = y >= 999 ? OPEN : y;
+      }
+      return top;
+    } catch (e) {
+      return null;
+    } finally {
+      HD.edition = prev;
+    }
+  }
+
   // the part of a burst that must clear the roofs: half width, lower half
   // height and the centre's sag under gravity around mid-life
   function footprint(sh) {
@@ -249,18 +269,28 @@
     return [hw + 2, vb, drop];
   }
   /** the lowest burst centre (largest y) at bx that keeps the footprint clear of roofs and the far city */
-  function byLimit(s, bx, fp, far) {
+  function byLimit(s, bx, fp, far, front) {
     const hw = fp[0];
     let lim = (far ? s.sky.farHorizon : s.sky.horizon) - fp[1] - fp[2];
     const top = s.top;
+    // a near burst behind the far city may dip only a third of its radius
+    // behind the distant skyline (HD.backdrops.top); one in front of it
+    // (over the river) and a far one need not
+    const bt = !far && !front ? s.btop : null;
+    const dip = 0.35 * (hw - 2);
     for (let x = Math.max(0, Math.floor(bx - hw)); x <= Math.min(HD.W - 1, Math.ceil(bx + hw)); x++) {
-      const tp = top[x];
-      if (tp >= OPEN) continue;
       const u = (x - bx) / hw;
       const k = 1 - u * u;
       if (k <= 0) continue;
-      const y = tp - 4 - fp[2] - fp[1] * Math.sqrt(k);
-      if (y < lim) lim = y;
+      const tp = top[x];
+      if (tp < OPEN) {
+        const y = tp - 4 - fp[2] - fp[1] * Math.sqrt(k);
+        if (y < lim) lim = y;
+      }
+      if (bt && bt[x] < OPEN) {
+        const y = bt[x] + dip - fp[2] - fp[1] * Math.sqrt(k);
+        if (y < lim) lim = y;
+      }
     }
     return lim;
   }
@@ -306,7 +336,7 @@
             const bx = opt && opt.tx !== undefined ? Math.min(xMax, Math.max(xMin, opt.tx + (rnd() - 0.5) * 10)) : xMin + rnd() * (xMax - xMin);
             const yk = opt && opt.ty !== undefined ? clamp01(opt.ty + (rnd() - 0.5) * 0.1) : clamp01((1 - sh.depth) * 0.42 + rnd() * 0.5);
             let by = yMin + yk * (yMax - yMin);
-            const lim = byLimit(s, bx, fp, far);
+            const lim = byLimit(s, bx, fp, far, !!z.front);
             if (lim < yMin) continue; // no room above the roofs here
             let score = rnd() * 0.4;
             if (by > lim) {
@@ -314,7 +344,7 @@
               by = lim;
             }
             if (bx - fp[0] < SAFE.x1 + 6 && by - Rr < SAFE.y1 + 6) continue; // title-safe sky stays calm
-            if (s.moon && Math.hypot(bx - MOON.x, by - MOON.y) < Rr * 0.25 + s.moonR + 3) continue; // no burst centred on the moon
+            if (s.moon && Math.hypot(bx - s.moon.x, by - s.moon.y) < Rr * 0.4 + s.moon.r + 3) continue; // no burst centred on the moon
             for (const o of others) {
               const need = (Rr + o.R) * 0.95;
               const d = Math.hypot(bx - o.bx, by - o.by);
@@ -330,6 +360,7 @@
           sh.bx = best[0];
           sh.by = best[1];
           sh.zone = zIdx;
+          sh.front = !!z.front;
           if (z.rk < 0.7) sh.far = true;
           return true;
         }
@@ -379,14 +410,36 @@
     silver: [0.74, 0.8, 1],
   };
 
+  /**
+   * The moon disc of an edition {x, y, r} or null: the sky module's own
+   * (HD.sky.moon() answers for HD.edition, so it is asked with the edition
+   * swapped in for a moment), else the shared layout anchor.
+   */
+  function moonFor(ed) {
+    if (!ed.moon || ed.moon === 'none') return null;
+    if (HD.sky && HD.sky.moon) {
+      const prev = HD.edition;
+      try {
+        HD.edition = ed;
+        const m = HD.sky.moon();
+        if (m) return { x: m.x, y: m.y, r: m.r };
+      } catch (e) {
+        // fall back to the layout anchor
+      } finally {
+        HD.edition = prev;
+      }
+    }
+    return { x: MOON.x, y: MOON.y, r: ed.moon === 'crescent' ? 10 : MOON.r };
+  }
+
   function emptyShow(ed, pl) {
     return {
       f: 0,
       list: [],
       sky: PLACE_SKY[pl.id] || DEFAULT_SKY,
       top: columnTops(pl),
-      moon: ed.moon && ed.moon !== 'none',
-      moonR: ed.moon === 'crescent' ? MOON.r * 0.6 : MOON.r,
+      btop: backdropTops(ed),
+      moon: moonFor(ed),
       glow: GLOW,
       lightK: 1,
       salvos: [],
@@ -429,6 +482,7 @@
           bx: x,
           by: y,
           zone: 0,
+          front: !!s.sky.zones[0].front,
           tau: 0,
         });
       }
@@ -1048,22 +1102,24 @@
     return a * (sh.far ? 0.55 : 1) * (sh.type === 'willow' ? 0.8 : 1);
   }
 
-  function drawFireworks(g, t) {
+  function drawFireworks(g, t, front) {
     const s = show();
     if (!s.list.length) return;
-    const list = liveShells(t, s);
-    if (!list.length) return;
+    const all = liveShells(t, s);
+    if (!all.length) return;
     const glow = s.glow;
-    // glows first (additive, behind every burst)
-    for (const sh of list) {
+    // glows first (additive, behind every burst of this layer)
+    for (const sh of all) {
+      if (!!sh.front !== front) continue;
       const fl = flashOf(sh);
       if (fl <= 0.02) continue;
       const col = glow[sh.col] || glow.gold;
       const rad = Math.max(10, Math.round((sh.R * 1.1) / 4) * 4);
-      HD.glow(g, sh.bx, sh.by, rad, col, 0.2 * fl);
+      HD.glow(g, sh.bx, sh.by, rad, col, 0.15 * fl);
     }
-    for (const sh of list) {
-      if (sh.tau < sh.rise) drawRocket(g, sh, t, s.sky.rise);
+    for (const sh of all) {
+      if (!!sh.front !== front) continue;
+      if (sh.tau < sh.rise) drawRocket(g, sh, t, front && s.sky.riverRise ? s.sky.riverRise : s.sky.rise);
       else drawBurst(g, sh, t);
     }
   }
@@ -1098,8 +1154,8 @@
       L.add({
         x: R(x / w),
         y: R(y / w) + 80,
-        r: 170,
-        ry: 120,
+        r: 150,
+        ry: 100,
         color: [r / w, gc / w, b / w],
         i: Math.min(0.15, 0.11 * w),
         bands: 4,
@@ -1163,7 +1219,21 @@
     };
   }
 
+  // the planter is static: baked per place and snow state
+  const PLANTER_ART = new Map();
+  const PL_TOP = 4; // headroom above the rim for sprigs and snow
   function drawPlanter(g, pt) {
+    const snow = !!(HD.edition.weather && HD.edition.weather.snow > 0);
+    const key = pt.x + '|' + pt.base + '|' + snow;
+    let art = PLANTER_ART.get(key);
+    if (!art) {
+      const loc = { x: pt.hw, base: PL_TOP + PL_H, hw: pt.hw };
+      PLANTER_ART.set(key, (art = HD.bake(2 * pt.hw + 1, PL_TOP + PL_H, (gg) => paintPlanter(gg, loc, snow))));
+    }
+    g.sprite(art, pt.x - pt.hw, pt.base - PL_H - PL_TOP);
+  }
+
+  function paintPlanter(g, pt, snow) {
     const x0 = pt.x - pt.hw;
     const x1 = pt.x + pt.hw;
     const top = pt.base - PL_H;
@@ -1188,8 +1258,7 @@
       for (let i = 1; i <= h; i++) g.px(x, top - i + 1, leaf[Math.min(2, h - i)]);
     }
     // a dusting of snow on the rim and the sprigs
-    const ed = HD.edition;
-    if (ed.weather && ed.weather.snow > 0) {
+    if (snow) {
       g.hline(x0, x1, top - 1, P.snow[6]);
       g.px(x0 + 2, top - 3, P.snow[7]);
       g.px(x1 - 1, top - 3, P.snow[7]);
@@ -1327,7 +1396,10 @@
       sparklerLights(t, L);
     },
     passes: [
-      { layer: 'bg', z: 9, id: 'fireworks', draw: drawFireworks },
+      // behind the far city (over a skyline), and in front of it (over the
+      // river between the building and the far shore)
+      { layer: 'bg', z: 9, id: 'fireworks', draw: (g, t) => drawFireworks(g, t, false) },
+      { layer: 'bg', z: 19.5, id: 'fireworks-river', draw: (g, t) => drawFireworks(g, t, true) },
       { layer: 'scene', z: 41, id: 'sparkler-sticks', draw: drawSparklerSticks },
       { layer: 'scene', z: 45, id: 'sparkler-cores', draw: drawSparklerCores },
       { layer: 'fx', z: 36, id: 'sparklers', draw: drawSparklerFizz },

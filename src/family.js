@@ -35,6 +35,11 @@
   const R = Math.round;
   const sec = (t) => SU.sec(t);
   const inWin = (s, a, b) => (s >= a && s < b ? (s - a) / (b - a) : -1);
+  /** inWin for a window that may run past the loop's end (it wraps to the start) */
+  const inWinWrap = (s, a, b) => {
+    const u = inWin(s, a, b);
+    return u >= 0 ? u : inWin(s + HD.LOOP, a, b);
+  };
 
   // ---------------------------------------------------------------------
   // colour: each outfit is given as its daylight colour and painted per
@@ -80,6 +85,33 @@
     for (let y = 0; y < rows.length; y++)
       for (let x = 0; x < rows[y].length; x++) if (rows[y][x] !== '.') set(G, ox + x, oy + y, rows[y][x]);
   }
+  /** ASCII rows -> canvas in one putImageData ('.' and ' ' are transparent) */
+  const rgbCache = new Map();
+  function spriteRows(rows, map) {
+    const h = rows.length;
+    let w = 0;
+    for (const r of rows) w = Math.max(w, r.length);
+    const cv = HD.canvas(Math.max(1, w), Math.max(1, h));
+    const ctx = cv.getContext('2d');
+    const im = ctx.createImageData(Math.max(1, w), Math.max(1, h));
+    const d = im.data;
+    for (let y = 0; y < h; y++) {
+      const row = rows[y];
+      for (let x = 0; x < row.length; x++) {
+        const c = map[row[x]];
+        if (!c || row[x] === '.' || row[x] === ' ') continue;
+        let v = rgbCache.get(c);
+        if (!v) rgbCache.set(c, (v = rgb(c)));
+        const i = (y * w + x) * 4;
+        d[i] = v[0];
+        d[i + 1] = v[1];
+        d[i + 2] = v[2];
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    return cv;
+  }
   const EMCH = 'zeyw';
   const OUTLINE = '#0b0910';
   /** pad by one cell, add a dark 1px outline (not under the feet), bake albedo + emissive */
@@ -97,9 +129,9 @@
         }
     map = Object.assign({ o: OUTLINE }, map);
     const rows = Q.map((r) => r.join(''));
-    const alb = HD.sprite(rows, map);
+    const alb = spriteRows(rows, map);
     let em = null;
-    if (emMap && rows.some((r) => [...r].some((c) => EMCH.includes(c) && emMap[c]))) em = HD.sprite(rows, emMap);
+    if (emMap && rows.some((r) => [...r].some((c) => EMCH.includes(c) && emMap[c]))) em = spriteRows(rows, emMap);
     return { alb, em, w: alb.width, h: alb.height };
   }
   function blit(g, s, x, y) {
@@ -387,22 +419,20 @@
       }
       set(G, HX - 1, HY + 4, 'J');
       set(G, HX - 1, HY + 5, 'J');
-      // over the shoulders, then falling straight down behind the arms to
-      // the waist, the ends trailing with the breeze; the top stays clear
+      // over the shoulders, then falling straight down the sides of her top
+      // to the waist; the ends trail with the breeze
       const sg = Math.sign(br);
       const ab = Math.abs(br);
-      set(G, BX + 1, BY, 'H');
-      set(G, BX + 7, BY, 'H');
-      set(G, BX, BY, 'H');
-      set(G, BX + 8, BY, 'H');
-      for (let i = 1; i < 5; i++) {
+      for (let i = 0; i < 5; i++) {
         const y = BY + i;
-        const d = sg * Math.min(ab, i < 3 ? 0 : i - 2);
-        if (get(G, BX + d, y) === '.' || d !== 0) set(G, BX + d, y, i === 1 ? 'J' : 'H');
-        if (get(G, BX + 8 + d, y) === '.' || d !== 0) set(G, BX + 8 + d, y, 'H');
-        if (i < 3) {
-          set(G, BX - 1 + d, y, 'H');
-          set(G, BX + 9 + d, y, 'H');
+        const d = sg * Math.min(ab, i < 2 ? 0 : i - 1);
+        if (i < 2) {
+          set(G, BX + 1, y, i === 1 ? 'J' : 'H');
+          set(G, BX + 7, y, 'H');
+        }
+        if (i < 4 || d !== 0) {
+          set(G, BX + d, y, 'H');
+          set(G, BX + 8 + d, y, 'H');
         }
       }
       if (p.gust) set(G, p.gust > 0 ? HX + 10 : HX - 2, HY + 3, 'H');
@@ -897,7 +927,7 @@
         crane: { Y: c('#ffd02a', 0.15), y: c('#d89a10', 0.15), K: '#141218', g: c('#d8e8f0', 0.15) },
         box: { B: c('#f070b0', 0.15), b: c('#c04888', 0.15), R: c('#ffd040', 0.15) },
         hook: c('#e04030', 0.15),
-        giraffe: { Y: c('#f2c84a', 0.15), o: c('#a8682c'), k: '#1a1216' },
+        giraffe: { Y: c('#f2c84a', 0.15), o: c('#a8682c'), k: c('#4a3020'), m: c('#e8b880') },
         IC: {
           glass: c('#e4ecf4'),
           fizz: c('#f2d27a'),
@@ -957,7 +987,7 @@
     e.px(x, y - 2 + (sp % 2), '#ffffff');
   }
   // a small giraffe plush: ossicones, head with a muzzle, spotted neck and body
-  const GIRAFFE = ['k.k.', 'YYY.', '.YYY', '.Yo.', '.oY.', 'YoYY', 'Y..Y'];
+  const GIRAFFE = ['.k.k.', '.YYY.', '.YYmm', '.Yo..', '.oY..', '.Yo..', 'YoYY.', 'YYoY.', 'k..k.'];
   function drawGiraffe(g, x, y, flip) {
     const sm = smallMap(HD.edition);
     const s = memo('giraffe|' + HD.edition.id, () => bake(GIRAFFE.map((r) => r.split('')), sm.giraffe, null));
@@ -1004,7 +1034,7 @@
         const sh = r <= 6 ? hd : R((hd * (11 - r)) / 6);
         stamp(G, [WP_ROWS[r]], sh, r + (r <= 6 ? hy : 0));
       }
-      return HD.sprite(G.map((r) => r.join('')), WP_C);
+      return spriteRows(G.map((r) => r.join('')), WP_C);
     });
   }
   const WIN_LEANS = [[30, 52], [118, 131], [168, 196]];
@@ -1035,6 +1065,14 @@
     g.px(x - 2 + (sw > 0.4 ? 1 : 0), base - 6, tc);
     g.px(x - 1 + (sw > 0.4 ? 1 : sw < -0.4 ? -1 : 0), base - 7, WP_C.J);
     g.sprite(winPartner(k), x, top);
+    // when the niece waves up from the sidewalk, she waves back
+    if (k === 0 && HD.edition.cast.niece && nieceWavingHome(t)) {
+      const f = Math.floor(T.step(t, 5) * 5) % 2;
+      g.vline(x - 1, top + 4, top + 7, WP_C.K);
+      g.px(x - 2 + f, top + 3, WP_C.K);
+      g.px(x - 2 + f, top + 2, WP_C.K);
+      g.px(x - 1 + f, top + 2, WP_C.K);
+    }
     // eyes: her own green-gold, now and then a glance at him; closed while she rests on him
     const id = idle(t, 21);
     const hd = [0, 2, 5][k];
@@ -1137,7 +1175,7 @@
       // a cheer at the fire module's salvos (the first one is midnight)
       big: (t, s) => {
         for (const a of salvoTimes()) {
-          const u = inWin(s, a + 0.6, a + 6);
+          const u = inWinWrap(s, a + 0.6, a + 6);
           if (u >= 0) return u;
         }
         return -1;
@@ -1145,7 +1183,7 @@
       act(c, t, s, big) {
         // everyone looks up, glasses half raised, while the logo firework climbs and blooms
         const lw = HD.brand && HD.brand.logoWindow;
-        const look = lw ? inWin(s, lw[0] + 0.5, lw[1]) >= 0 : inWin(s, HD.LOOP * 0.25 + 1.2, HD.LOOP * 0.25 + 5) >= 0;
+        const look = lw ? inWinWrap(s, lw[0] + 0.5, lw[1]) >= 0 : inWin(s, HD.LOOP * 0.25 + 1.2, HD.LOOP * 0.25 + 5) >= 0;
         const item = c.who === 'partner' ? 'sparkler' : 'flute';
         const side = c.who === 'partner' ? -1 : c.face;
         if (big >= 0) {
@@ -1716,7 +1754,7 @@
     const kids = TOT_KIDS.map((kind, i) => ({
       kind,
       i,
-      x: R(lead - dir * (i * 9 - (walking ? 0 : i * 1))),
+      x: R(lead - dir * i * (walking ? 11 : 10)),
       base: door.base + (i === 1 ? 2 : 0),
       dir,
       walking,
@@ -1921,6 +1959,17 @@
     dir = walking ? (vc.rem < pause + walkT ? -sx : sx) : 0;
     return { x: R(x), base: R(y), walking, dir, vc, atDoor: d < 3 };
   }
+  /** seconds into the niece's wave cycle at home (she waves for the first 2) */
+  function homeWaveAge(t) {
+    const pc = T.cycle(T.step(t, 8), 5, 9.5, 63);
+    return pc.age * pc.P;
+  }
+  /** she is out on the sidewalk and waving up at the window right now */
+  function nieceWavingHome(t) {
+    if (HD.edition.cast.party === 'match') return false;
+    const k = nieceScene(t);
+    return !!k && !k.walking && !k.atDoor && homeWaveAge(t) < 2;
+  }
   function drawNiece(g, t) {
     const k = nieceScene(t);
     if (!k) return;
@@ -1956,8 +2005,7 @@
         } else if (a > 6 && a < 6.8) bob = Math.floor(ts * 8) % 2 ? -1 : 0;
       } else {
         // home: waving up at the two of them in the window, reaching for fireflies
-        const pc = T.cycle(ts, 5, 9.5, 63);
-        const a = pc.age * pc.P;
+        const a = homeWaveAge(t);
         if (a < 2) {
           arms = waveArm(t);
           look = -1;
@@ -2119,8 +2167,8 @@
     const arms = waving ? (lift ? 'up' : waveArm(t)) : 'down';
     blitKit(g, C.niece, { pose: 'ride', arms, blink: ki.blink, look: waving ? 1 : ki.look }, x, kb);
     // the giraffe plush: tucked under her arm, or held up high
-    if (waving && lift) drawGiraffe(g, x - 3, kb - 18);
-    else drawGiraffe(g, x - 7, kb - 6, true);
+    if (waving && lift) drawGiraffe(g, x - 3, kb - 21);
+    else drawGiraffe(g, x - 8, kb - 8, true);
   }
 
   // =====================================================================

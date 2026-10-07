@@ -342,12 +342,18 @@
     g.hline(cx - 8, cx + 8, base, C.shadow);
     g.hline(cx - 5, cx + 5, base + 1, C.shadow);
     const lvB = flickLevel(t, 5);
+    e.sprite(baked('back', C, lvB, 3, paintBack), cx - HW, base - 10);
+    drawCoals(g, t, cx, base);
+  }
+
+  function paintBack(e, cx, base, C, lvB) {
+    // rows dy -10..-8 of the bowl, with base = 10 in sprite space
+    base = 10;
     // back rim (lit from the inside)
     for (const [dy, a, b] of BACK) e.hline(cx + a, cx + b, base + dy, C.rimBack[Math.min(2, lvB + (Math.abs(a) > 8 ? 1 : 0))]);
     // inner back wall: glows above the coals, brighter in the middle
     const w = OPEN['-9'];
     for (let x = -w; x <= w; x++) e.px(cx + x, base - 9, C.wall[Math.min(2, lvB + (Math.abs(x) > 3 ? 1 : 0))]);
-    drawCoals(g, t, cx, base);
   }
 
   function drawCoals(g, t, cx, base) {
@@ -372,10 +378,22 @@
     g.em.sprite(coalCv, cx - HW, base + RIM_Y);
   }
 
+  // the bowl's front and back are baked per palette and flicker level
+  // (3 levels x 2 palettes) and blitted as emissive sprites
+  const BAKED = new Map();
+  function baked(kind, C, lv, h, paint) {
+    const key = kind + (C === SUN ? 'S' : 'N') + lv;
+    let spr = BAKED.get(key);
+    if (!spr) BAKED.set(key, (spr = HD.bake(2 * HW + 1, h, (gg) => paint(gg, HW, h, C, lv))));
+    return spr;
+  }
+
   function drawFront(g, t, cx, base) {
     const C = sunlit() ? SUN : NIGHT;
-    const e = g.em;
-    const lv = flickLevel(t, 5);
+    g.em.sprite(baked('front', C, flickLevel(t, 5), 7, paintFront), cx - HW, base - 7);
+  }
+
+  function paintFront(e, cx, base, C, lv) {
     // the lip's top surface: hot in the middle where the flames lean over it,
     // cooler towards the ends
     const lipY = base + BODY[0][0];

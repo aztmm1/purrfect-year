@@ -412,7 +412,7 @@ export function compose(ed, pic = {}) {
       for (let j = 0; j < c.bars; j++) {
         const b = c.bar + j;
         if (P.pat === 'bells') {
-          if (j === 0 && rc_.chance(0.85 * k)) { const [q, d] = vd(tones[tones.length - 1] + (rc_.chance(0.5) ? 0 : 12) > P.hi ? tones[tones.length - 1] : tones[tones.length - 1], 1); push('color', t8(b, 0) + 0.01, P.v, q, 1, 0.3, d); }
+          if (j === 0 && rc_.chance(0.85 * k)) { const [q, d] = vd(tones[tones.length - 1], 1); push('color', t8(b, 0) + 0.01, P.v, q, 1, 0.3, d); }
           if (rc_.chance(0.35 * k)) { const [q, d] = vd(rc_.pick(tones), 0.7); push('color', t8(b, rc_.pick([4, 6, 3])), P.v, q, 1, -0.3, d); }
           continue;
         }
@@ -474,7 +474,7 @@ export function compose(ed, pic = {}) {
         else push('drums', t, 'rim', { vel: 0.2 * (0.7 + 0.5 * rd.next()), c: C }, 1, 0.12, 0.3);
       }
       // brush swirl: one soft sweep per beat
-      if (D.kit === 'brush' && D.swirl) for (let q = 0; q < 4; q++) push('drums', b * barDur + q * beat, 'swirl', { vel: D.swirl * k, len: beat }, 1, 0.05, beat + 0.05);
+      if (D.kit === 'brush' && D.swirl) for (let q = 0; q < 4; q++) push('drums', b * barDur + q * beat - 0.15 * beat, 'swirl', { vel: D.swirl * k, len: beat }, 1, 0.05, beat * 1.35);
       // top: hats / shaker / jingle
       if (full && D.top === 'hat') for (let e = 0; e < 8; e++) { if (rd.chance(0.08)) continue; push('drums', t8(b, e) + rd.gauss() * 0.004, 'hat', { vel: 0.3 * [1, 0.55, 0.8, 0.5][e % 4] * (1 + 0.1 * rd.gauss()), c: C }, 1, -0.25, 0.12); }
       if (full && D.top === 'shaker') for (let s = 0; s < 16; s++) push('drums', t16(b, s) + rd.gauss() * 0.003, 'shaker', { vel: 0.28 * [1, 0.45, 0.75, 0.45][s % 4] * (1 + 0.12 * rd.gauss()), c: C }, 1, 0.3, 0.17);

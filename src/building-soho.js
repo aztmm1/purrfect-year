@@ -454,6 +454,7 @@
       else {
         paintLit(S.e, shape, x, y, state, seed);
         barHoles(S.e, shape, x, y);
+        S.lit.push([x, y, SHAPES[shape][0], SHAPES[shape][1], state === 'dim' ? 0.18 : 0.38]);
       }
     }
     bars(S.b, shape, x, y, barC);
@@ -633,7 +634,7 @@
     g.hline(x0, x1, y0, p.stoneHi);
     g.vline(x0, y0, y1, p.stoneHi);
     g.vline(x1, y0 + 1, y1, p.stoneLo);
-    if (flute) for (let x = x0 + 2; x < x1 - 1; x += 3) g.vline(x, y0 + 1, y1, p.stoneLo);
+    if (flute) for (let x = x0 + 3; x < x1 - 2; x += 4) g.vline(x, y0 + 1, y1, p.stoneLo);
   }
 
   function bakeCrown(S) {
@@ -1455,30 +1456,37 @@
   // ------------------------------------------------------------------
   // Flag: a US flag (pixel scale) on an angled pole, flying to the left
   // ------------------------------------------------------------------
-  function drawFlag(g, t, p) {
+  /** one frame of the flag into a 13x9 sprite (ph: wave phase 0..1, amp: wave height) */
+  function bakeFlag(p, ph, amp) {
+    return HD.bake(FLAG.w, FLAG.h + 2, (g) => {
+      for (let c = 0; c < FLAG.w; c++) {
+        const x = FLAG.w - 1 - c; // the hoist is on the right, at the pole tip
+        const s = Math.sin(T.TAU * (ph - c / 9));
+        const dy = c < 2 ? 0 : Math.round(amp * s * Math.min(1, c / 6));
+        const shade = s > 0.5 && c > 4;
+        for (let r = 0; r < FLAG.h; r++) {
+          let col = r % 2 ? p.flagWhite : p.flagRed;
+          if (c < 5 && r < 4) {
+            // blue canton at the hoist with white stars
+            col = p.flagBlue;
+            if ((r === 0 || r === 2) && (c === 1 || c === 3)) col = p.flagWhite;
+            if (r === 1 && (c === 2 || c === 4)) col = p.flagWhite;
+          }
+          if (shade) col = mix(col, '#000000', 0.2);
+          g.px(x, 1 + r + dy, col);
+        }
+      }
+    });
+  }
+  function drawFlag(g, t, A) {
     const ts = T.step(t, 8);
     const br = HD.summer ? HD.summer.breeze(ts) : 0;
-    const amp = 0.6 + 0.5 * Math.abs(br);
-    const ph = T.phase(ts, 1.6);
-    const hx = FLAG.px; // hoist at the pole tip
-    const y0 = FLAG.py;
-    for (let c = 0; c < FLAG.w; c++) {
-      const x = hx - c;
-      const s = Math.sin(T.TAU * (ph - c / 9));
-      const dy = c < 2 ? 0 : Math.round(amp * s * Math.min(1, c / 6));
-      const shade = s > 0.5 && c > 4;
-      for (let r = 0; r < FLAG.h; r++) {
-        let col = r % 2 ? p.flagWhite : p.flagRed;
-        if (c < 5 && r < 4) {
-          // blue canton at the hoist with white stars
-          col = p.flagBlue;
-          if ((r === 0 || r === 2) && (c === 1 || c === 3)) col = p.flagWhite;
-          if (r === 1 && (c === 2 || c === 4)) col = p.flagWhite;
-        }
-        if (shade) col = mix(col, '#000000', 0.2);
-        g.px(x, y0 + r + dy, col);
-      }
-    }
+    const strong = Math.abs(br) > 0.5 ? 1 : 0;
+    const pi = Math.floor(T.phase(ts, 1.6) * 16) % 16;
+    const key = pi * 2 + strong;
+    let spr = A.flags[key];
+    if (!spr) spr = A.flags[key] = bakeFlag(A.S.p, pi / 16, strong ? 1.05 : 0.7);
+    g.sprite(spr, FLAG.px - FLAG.w + 1, FLAG.py - 1);
   }
 
   /**
@@ -1508,6 +1516,27 @@
     ctx.putImageData(img, 0, 0);
   }
 
+  /** lit rooms warm the sill (or slab edge) under them and the foot of their jambs */
+  function warmSills(canvas, list) {
+    const ctx = canvas.getContext('2d');
+    const img = ctx.getImageData(0, 0, W, GY);
+    const d = img.data;
+    const tint = (x, y, k) => {
+      if (x < 0 || x >= W || y < 0 || y >= GY) return;
+      const i = (y * W + x) * 4;
+      if (!d[i + 3]) return;
+      d[i] += (214 - d[i]) * k;
+      d[i + 1] += (143 - d[i + 1]) * k * 0.85;
+      d[i + 2] += (64 - d[i + 2]) * k * 0.6;
+    };
+    for (const [x, y, w, h, k] of list) {
+      for (let xx = x - 1; xx <= x + w; xx++) tint(xx, y + h, k);
+      tint(x - 1, y + h - 1, k * 0.6);
+      tint(x + w, y + h - 1, k * 0.6);
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
   // ------------------------------------------------------------------
   // Baking per edition (and light mode)
   // ------------------------------------------------------------------
@@ -1520,10 +1549,15 @@
     const base = HD.bake(W, GY, (g) => (gB = g));
     const em = night ? HD.bake(W, GY, (g) => (gE = g)) : null;
     const front = HD.bake(W, GY + 8, (g) => (gF = g));
-    const S = { b: gB, e: gE, f: gF, p: resolver(lt), night, golden: lt.mode === 'golden', lt, dyn: [], tvs: [], shops: [], darkBays: [] };
+    const S = { b: gB, e: gE, f: gF, p: resolver(lt), night, golden: lt.mode === 'golden', lt, dyn: [], tvs: [], shops: [], darkBays: [], lit: [] };
     bakeBlock(S);
-    if (night) nightFalloff(base);
-    return { base, em, front, S };
+    let emFront = null;
+    if (night) {
+      nightFalloff(base);
+      warmSills(base, S.lit);
+      emFront = HD.bake(W, GY, bakeEmFront);
+    }
+    return { base, em, front, emFront, S, flags: [], tv: new Map(), hearts: [], glints: new Map() };
   }
   const cache = new Map();
   function art() {
@@ -1545,24 +1579,33 @@
     return T.noise(t, 46, seed) > 0.47;
   }
 
+  /** one look of a TV-lit window (lv flicker level, pos patch position, fl flash) */
+  function bakeTV(shape, lv, pos, fl) {
+    const [w, h] = SHAPES[shape];
+    return HD.bake(w, h, (e) => {
+      e.rect(0, 0, w, h, TVC[lv ? 2 : 1]);
+      e.hline(0, w - 1, h - 1, TVC[0]);
+      const px = 1 + Math.round((pos / 2) * (w - 4));
+      e.rect(px, 1, 2, Math.max(1, h - 3), TVC[lv ? 3 : 2]);
+      if (fl) e.px(px, 1, TVC[4]);
+      barHoles(e, shape, 0, 0);
+    });
+  }
+
   function drawDynamic(g, t, A) {
     const S = A.S;
     for (const d of S.dyn) if (dynOn(t, d.seed)) g.em.sprite(d.spr, d.x, d.y);
-    // TVs: a cold flicker
+    // TVs: a cold flicker (a few baked looks, picked by loop-safe noise)
     const ts = T.step(t, 6);
     for (const v of S.tvs) {
-      const [w, h] = SHAPES[v.shape];
       const n = T.noise(ts, 0.8, v.seed);
-      const n2 = T.noise(ts, 2.3, v.seed + 9);
-      const e = g.em;
-      const ac = v.shape === 'arch' ? 1 : 0; // keep the arch corners
-      e.hline(v.x + ac, v.x + w - 1 - ac, v.y, TVC[n > 0.62 ? 2 : 1]);
-      e.rect(v.x, v.y + 1, w, h - 1, TVC[n > 0.62 ? 2 : 1]);
-      e.hline(v.x, v.x + w - 1, v.y + h - 1, TVC[0]);
-      const px = v.x + 1 + Math.floor(n2 * (w - 3));
-      e.rect(px, v.y + 1, 2, Math.max(1, h - 3), TVC[n > 0.4 ? 3 : 2]);
-      if (n > 0.8) e.px(px, v.y + 1, TVC[4]);
-      bars(g, v.shape, v.x, v.y, v.barC);
+      const lv = n > 0.62 ? 1 : 0;
+      const pos = Math.min(2, Math.floor(T.noise(ts, 2.3, v.seed + 9) * 3));
+      const fl = n > 0.8 ? 1 : 0;
+      const key = v.shape + lv + pos + fl;
+      let spr = A.tv.get(key);
+      if (!spr) A.tv.set(key, (spr = bakeTV(v.shape, lv, pos, fl)));
+      g.em.sprite(spr, v.x, v.y);
     }
   }
 
@@ -1576,84 +1619,95 @@
     const e = S.night ? g.em : g;
     const back = S.night ? LOBC.wall : p.dLobby;
     const front = S.night ? LOBC.slab : p.mull;
-    const wings = [];
+    let near = -1;
     for (let k = 0; k < 4; k++) {
       const a = ang + (k * Math.PI) / 2;
-      wings.push({ x: Math.round(cx + 5.4 * Math.sin(a)), near: Math.cos(a) > 0 });
+      const x = Math.round(cx + 5.4 * Math.sin(a));
+      if (Math.cos(a) > 0) {
+        g.vline(x, DOOR.y0 + 1, 204, front);
+        near = x;
+      } else e.vline(x, DOOR.y0 + 2, 203, back);
     }
-    for (const wv of wings) if (!wv.near) e.vline(wv.x, DOOR.y0 + 2, 203, back);
     g.vline(cx, DOOR.y0 + 1, 204, front);
-    for (const wv of wings)
-      if (wv.near) {
-        g.vline(wv.x, DOOR.y0 + 1, 204, front);
-        g.px(wv.x, DOOR.y0 + 8, S.night ? LOBC.woodHi : p.alu);
-      }
+    if (near >= 0) g.px(near, DOOR.y0 + 8, S.night ? LOBC.woodHi : p.alu);
   }
 
-  /** the heart lamp in their room: a slow warm pulse */
   // the heart lamp: a glowing heart-shaped shade (e edge, h glow, H hot core)
   const HEART_ROWS = ['ee.ee', 'ehHhe', '.ehe.', '..e..'];
-  function drawHeart(g, t, A) {
-    const S = A.S;
-    const x = BAY.x0 + 10;
-    const y = floorY(THEIR_FLOOR) + 2;
-    const k = 0.5 + 0.5 * T.wave(t, 6.4);
-    const e = S.night ? g.em : g;
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 5; c++) {
-        const ch = HEART_ROWS[r][c];
-        if (ch === '.') continue;
-        let col;
-        if (!S.night) col = ch === 'e' ? S.p.awRedLo : S.p.awRed;
-        else if (ch === 'e') col = HEART[1];
-        else if (ch === 'h') col = k > 0.3 ? HEART[2] : HEART[1];
-        else col = k > 0.55 ? HEART[3] : HEART[2];
-        e.px(x + c, y + r, col);
-      }
-    }
-  }
-
-  /** firework glints in the dark glass bays (from the sky lights of this frame) */
-  function drawGlints(g, t, A) {
-    const S = A.S;
-    if (!S.night) return;
-    const list = HD.lights.list;
-    let bursts = null;
-    for (const l of list) {
-      if (l.src === ID || !(l.y < 150) || (l.r || 0) < 14) continue;
-      (bursts || (bursts = [])).push(l);
-    }
-    if (!bursts) return;
-    for (const f of S.darkBays) {
-      const y0 = floorY(f) + 1;
-      const cy = y0 + 3;
-      let r = 0;
-      let gg = 0;
-      let b = 0;
-      for (const l of bursts) {
-        const dx = l.x - 262;
-        const dy = l.y - cy;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        const k = (l.i || 0) * Math.max(0, 1 - d / Math.max(60, l.r * 1.3));
-        const c = l.color || [1, 0.7, 0.4];
-        r += c[0] * k;
-        gg += c[1] * k;
-        b += c[2] * k;
-      }
-      const s = Math.max(r, gg, b);
-      if (s < 0.02) continue;
-      const q = Math.floor(Math.min(1, s * 10) * 3 + bayer(f, 3)) / 3;
-      if (q <= 0) continue;
-      const col = CO.css(46 + ((200 * r) / s - 46) * q * 0.75, 72 + ((200 * gg) / s - 72) * q * 0.75, 120 + ((220 * b) / s - 120) * q * 0.75);
-      const off = 2 + Math.floor(hash(2000 + f, 5, 1, 9) * 10);
-      for (let k = 0; k < 7; k++) {
-        for (const xx of [BAY.x0 + off + k, BAY.x0 + off + k + 1]) {
-          if (xx === BAY.x0 + 8 || xx === BAY.x0 + 16 || xx > BAY.x1) continue;
-          g.em.px(xx, y0 + 6 - k, col);
+  function bakeHeart(S, lv) {
+    return HD.bake(5, 4, (e) => {
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 5; c++) {
+          const ch = HEART_ROWS[r][c];
+          if (ch === '.') continue;
+          let col;
+          if (!S.night) col = ch === 'e' ? S.p.awRedLo : S.p.awRed;
+          else if (ch === 'e') col = HEART[1];
+          else if (ch === 'h') col = lv > 0 ? HEART[2] : HEART[1];
+          else col = lv > 1 ? HEART[3] : HEART[2];
+          e.px(c, r, col);
         }
       }
-      if (q > 0.6) for (let x = BAY.x0; x <= BAY.x1; x += 2) if (x !== BAY.x0 + 8 && x !== BAY.x0 + 16) g.em.px(x, y0, col);
+    });
+  }
+  /** the heart lamp in their room: a slow warm pulse */
+  function drawHeart(g, t, A) {
+    const S = A.S;
+    const k = 0.5 + 0.5 * T.wave(t, 6.4);
+    const lv = !S.night ? 0 : k > 0.55 ? 2 : k > 0.3 ? 1 : 0;
+    const spr = A.hearts[lv] || (A.hearts[lv] = bakeHeart(S, lv));
+    (S.night ? g.em : g).sprite(spr, BAY.x0 + 10, floorY(THEIR_FLOOR) + 2);
+  }
+
+  /** the sheen of every dark glass bay in one colour and strength */
+  function bakeGlint(S, col, q) {
+    const y0 = floorY(20);
+    return HD.bake(24, floorY(2) + 8 - y0, (e) => {
+      for (const f of S.darkBays) {
+        const gy = floorY(f) + 1 - y0;
+        const off = 2 + Math.floor(hash(2000 + f, 5, 1, 9) * 10);
+        for (let k = 0; k < 7; k++) {
+          for (const xx of [off + k, off + k + 1]) {
+            if (xx === 8 || xx === 16 || xx > 23) continue;
+            e.px(xx, gy + 6 - k, col);
+          }
+        }
+        if (q > 0.6) for (let x = 0; x < 24; x += 2) if (x !== 8 && x !== 16) e.px(x, gy, col);
+      }
+    });
+  }
+  /** firework glints in the dark glass bays, from the sky lights of this frame */
+  function drawGlints(g, t, A) {
+    const S = A.S;
+    let r = 0;
+    let gg = 0;
+    let b = 0;
+    for (const l of HD.lights.list) {
+      if (l.src === ID || !(l.y < 150) || (l.r || 0) < 14) continue;
+      const dx = l.x - 262;
+      const dy = l.y - 110;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const k = (l.i || 0) * Math.max(0, 1 - d / Math.max(60, l.r * 1.3));
+      const c = l.color || [1, 0.7, 0.4];
+      r += c[0] * k;
+      gg += c[1] * k;
+      b += c[2] * k;
     }
+    const s = Math.max(r, gg, b);
+    if (s < 0.02) return;
+    const q = Math.min(3, Math.round(Math.min(1, s * 10) * 3)) / 3;
+    if (q <= 0) return;
+    // the burst's hue, quantised so only a handful of looks are ever baked
+    const qr = Math.round((r / s) * 3) / 3;
+    const qg = Math.round((gg / s) * 3) / 3;
+    const qb = Math.round((b / s) * 3) / 3;
+    const key = qr * 1000 + qg * 100 + qb * 10 + q;
+    let spr = A.glints.get(key);
+    if (!spr) {
+      const col = CO.css(46 + (200 * qr - 46) * q * 0.75, 72 + (200 * qg - 72) * q * 0.75, 120 + (220 * qb - 120) * q * 0.75);
+      A.glints.set(key, (spr = bakeGlint(S, col, q)));
+    }
+    g.em.sprite(spr, BAY.x0, floorY(20));
   }
 
   // fairy lights along the red-brick fire escape and the roof terrace pergola
@@ -1662,27 +1716,45 @@
     { pts: [155, 127, 188, 127], sag: 3, n: 11, seed: 9 },
   ];
   const BULB = ['#fff0c0', '#ffd27a', '#ffb860'];
-  function drawFairy(g, t) {
+  function bulbAt(s, i) {
+    const [x0, y0, x1, y1] = s.pts;
+    const u = (i + 0.5) / s.n;
+    return [Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u + s.sag * 4 * u * (1 - u))];
+  }
+  /** the static glowing bits drawn over the front layer: bulbs, canopy downlights, the dim beacon */
+  function bakeEmFront(e) {
     for (const s of FAIRY) {
-      const [x0, y0, x1, y1] = s.pts;
       for (let i = 0; i < s.n; i++) {
-        const u = (i + 0.5) / s.n;
-        const x = Math.round(x0 + (x1 - x0) * u);
-        const y = Math.round(y0 + (y1 - y0) * u + s.sag * 4 * u * (1 - u));
-        const tw = T.noise(t, 2.6, s.seed * 100 + i);
-        g.em.px(x, y, tw > 0.62 ? BULB[0] : tw > 0.3 ? BULB[1] : BULB[2]);
+        const [x, y] = bulbAt(s, i);
+        e.px(x, y, BULB[i % 3 === 1 ? 2 : 1]);
+      }
+    }
+    for (let x = CANOPY.x0 + 3; x < CANOPY.x1; x += 6) e.px(x, CANOPY.y + 3, '#fff2cc');
+    e.px(245, 21, '#5a1814');
+    e.px(246, 21, '#5a1814');
+  }
+  const EMF = [
+    [300, 132, 46, 8],
+    [153, 125, 38, 10],
+    [CANOPY.x0, CANOPY.y + 3, CANOPY.x1 - CANOPY.x0 + 1, 1],
+    [245, 21, 2, 1],
+  ];
+  function drawEmFront(g, t, A) {
+    for (const [x, y, w, h] of EMF) g.em.blit(A.emFront, x, y, w, h, x, y);
+    // a few bulbs twinkle brighter
+    for (const s of FAIRY) {
+      for (let i = 0; i < s.n; i++) {
+        if (T.noise(t, 2.6, s.seed * 100 + i) < 0.64) continue;
+        const [x, y] = bulbAt(s, i);
+        g.em.px(x, y, BULB[0]);
       }
     }
   }
 
   function drawAviation(g, t) {
-    const on = T.phase(t, 2.5) < 0.42;
-    g.em.px(245, 21, on ? '#ff4a3a' : '#5a1814');
-    g.em.px(246, 21, on ? '#ff6a52' : '#5a1814');
-  }
-
-  function drawDownlights(g) {
-    for (let x = CANOPY.x0 + 3; x < CANOPY.x1; x += 6) g.em.px(x, CANOPY.y + 3, '#fff2cc');
+    if (T.phase(t, 2.5) >= 0.42) return;
+    g.em.px(245, 21, '#ff4a3a');
+    g.em.px(246, 21, '#ff6a52');
   }
 
   // ------------------------------------------------------------------
@@ -1702,13 +1774,10 @@
     if (S.night) drawDynamic(g, t, A);
     drawHeart(g, t, A);
     drawDoor(g, t, A);
-    drawGlints(g, t, A);
+    if (S.night) drawGlints(g, t, A);
     g.sprite(A.front, 0, 0);
-    drawFlag(g, t, S.p);
-    if (S.night) {
-      drawFairy(g, t);
-      drawDownlights(g);
-    }
+    drawFlag(g, t, A);
+    if (A.emFront) drawEmFront(g, t, A);
     drawAviation(g, t);
   }
 
@@ -1736,9 +1805,9 @@
     }
     // their room: a soft pink breath on the frames around it
     const k = 0.5 + 0.5 * T.wave(t, 6.4);
-    L.add({ src: ID, x: BAY.x0 + 12, y: floorY(THEIR_FLOOR) + 4, r: 13, ry: 9, color: LT.pink, i: 0.55 + 0.2 * k, bands: 4 });
+    L.add({ src: ID, x: BAY.x0 + 12, y: floorY(THEIR_FLOOR) + 4, r: 13, ry: 9, color: LT.pink, i: 0.55 + 0.2 * k, bands: 4, halo: { r: 14, a: 0.1 } });
     // crown uplights washing the deco tiers
-    L.add({ src: ID, x: 236, y: 32, r: 46, ry: 10, color: LT.crown, i: 0.5, bands: 3, dither: 0.25, clip: { x0: 194, y0: 18, x1: 278, y1: 33 } });
+    L.add({ src: ID, x: 236, y: 32, r: 46, ry: 10, color: LT.crown, i: 0.55, bands: 3, dither: 0, clip: { x0: 194, y0: 18, x1: 278, y1: 33 } });
     // the flag is lit at night
     L.add({ src: ID, x: FLAG.px - 6, y: FLAG.py + 4, r: 11, ry: 8, color: LT.flag, i: 0.85, bands: 3 });
     // fairy lights
@@ -1759,7 +1828,7 @@
     let gF = null;
     const base = HD.bake(W, GY, (g) => (gB = g));
     HD.bake(W, GY + 8, (g) => (gF = g));
-    const S = { b: gB, e: null, f: gF, p: resolver(null), night: false, golden: false, lt: null, dyn: [], tvs: [], shops: [], darkBays: [] };
+    const S = { b: gB, e: null, f: gF, p: resolver(null), night: false, golden: false, lt: null, dyn: [], tvs: [], shops: [], darkBays: [], lit: [] };
     bakeBlock(S);
     const d = base.getContext('2d').getImageData(0, 0, W, GY).data;
     const sky = new Int16Array(W);

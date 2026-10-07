@@ -157,17 +157,27 @@ export function lowerThird({ name, date }, { W = 480, H = 270, side = 'left', fr
 export function verticalBands({ series = 'Purrfect Year', name, date, city }, { cw = 216, ch = 270, W = 216, H = 384 } = {}) {
   const band = (H - ch) >> 1;
   const cx = W >> 1;
-  const maxW = W - 16;
-  // the name at double size, on two lines if it is long, else single size
+  const maxW = W - 28;
+  // the name at double size: one line, or two balanced lines, else single size
   let nameScale = 2;
-  let lines = textWidth(name, { scale: 2 }) <= maxW ? [name] : wrapLines(name, maxW, { scale: 2 });
-  if (lines.length > 2 || lines.some((l) => textWidth(l, { scale: 2 }) > maxW)) {
-    nameScale = 1;
-    lines = wrapLines(name, maxW);
+  let lines = [name];
+  if (textWidth(name, { scale: 2 }) > maxW) {
+    const words = String(name).split(/\s+/);
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const pair = [words.slice(0, k).join(' '), words.slice(k).join(' ')];
+      const w = Math.max(...pair.map((l) => textWidth(l, { scale: 2 })));
+      if (!best || w < best.w) best = { w, pair };
+    }
+    if (best && best.w <= maxW) lines = best.pair;
+    else {
+      nameScale = 1;
+      lines = wrapLines(name, W - 16);
+    }
   }
   const lineH = CAP * nameScale;
-  const lineGap = 3 * nameScale;
-  const titleGap = 7;
+  const lineGap = 2 * nameScale;
+  const titleGap = lines.length > 1 ? 5 : 7;
   const blockH = CAP + titleGap + lines.length * lineH + (lines.length - 1) * lineGap;
   let y = Math.round((band - blockH) / 2);
   const top = [{ text: series, x: cx, y, color: INK.dim, track: 2, align: 'center' }];

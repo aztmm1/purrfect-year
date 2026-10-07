@@ -571,7 +571,7 @@
     // ---- dusks: twilight into rose and peach, the afterglow on the left ----
     midsummer: {
       // the shortest night: a long blue twilight over a thin rose-peach horizon
-      stops: [[0, '#17204a'], [45, '#223066'], [85, '#34417c'], [115, '#524f88'], [140, '#7f5f8e'], [160, '#ab6e8a'], [178, '#d18883'], [194, '#e9a57f'], [206, '#f2bf88']],
+      stops: [[0, '#17204a'], [34, '#24336b'], [60, '#394582'], [82, '#5b538c'], [102, '#8a6290'], [122, '#b8718c'], [144, '#dc8e86'], [168, '#eeaa82'], [206, '#f6c58c']],
       n: 15,
       pow: 0.82,
       seam: 4,
@@ -633,7 +633,7 @@
   }
 
   // where the moon sits per place (open sky upper right, clear of the towers)
-  const MOON_AT = { apt1: [410, 40], apt2: [420, 32], soho: [404, 38], bhills: [404, 36], marina: [404, 36], herndon: [356, 40] };
+  const MOON_AT = { apt1: [410, 40], apt2: [420, 32], soho: [404, 38], bhills: [404, 36], marina: [404, 36], herndon: [326, 38] };
   // the pale harvest moon rises low in the east (left) at golden hour
   const HARVEST_AT = { apt1: [66, 86], apt2: [84, 88] };
   // a young crescent hangs low in the west (left) in the afterglow
@@ -707,7 +707,8 @@
         if (dx * dx + dy * dy < (moon.r + 12) * (moon.r + 12)) continue;
       }
       const rc = rng();
-      const cls = rc < 0.62 ? 0 : rc < 0.9 ? 1 : rc < 0.978 ? 2 : 3;
+      let cls = rc < 0.62 ? 0 : rc < 0.9 ? 1 : rc < 0.978 ? 2 : 3;
+      if (x >= TS.x0 - 3 && x <= TS.x1 + 3 && y >= TS.y0 - 3 && y <= TS.y1 + 3) cls = Math.min(cls, rc < 0.8 ? 0 : 1); // only faint ones behind a title
       if (!free(x, y, cls >= 2 ? 3 : 1)) continue;
       occ[y * W + x] = 1;
       made++;
@@ -968,7 +969,7 @@
   }
   let tmp = null;
   let tctx = null;
-  function masked(ctx, tile, Ly, off, m) {
+  function masked(ctx, tile, Ly, off, m, ox, oy) {
     const y0 = Math.max(m.y, Ly.y);
     const y1 = Math.min(m.y + m.h, Ly.y + Ly.h);
     if (y1 <= y0) return;
@@ -986,7 +987,36 @@
     tctx.globalCompositeOperation = 'destination-in';
     tctx.drawImage(m.cv, 0, m.y - y0);
     tctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(tmp, 0, 0, m.w, h, m.x, y0, m.w, h);
+    ctx.drawImage(tmp, 0, 0, m.w, h, m.x - (ox || 0), y0 - (oy || 0), m.w, h);
+  }
+  /**
+   * the light overlay of a layer (all lit levels composited) depends only on
+   * the layer's scroll offset, which changes a few times a second: rebuild it
+   * when the offset moves, blit it every frame
+   */
+  function litOverlay(L, off) {
+    if (!L.ov) {
+      let x0 = W;
+      let y0 = H;
+      let x1 = 0;
+      let y1 = 0;
+      for (const m of L.masks) {
+        x0 = Math.min(x0, m.x);
+        y0 = Math.min(y0, Math.max(m.y, L.Ly.y));
+        x1 = Math.max(x1, m.x + m.w);
+        y1 = Math.max(y1, Math.min(m.y + m.h, L.Ly.y + L.Ly.h));
+      }
+      if (x1 <= x0 || y1 <= y0) return null;
+      L.ov = { cv: HD.canvas(x1 - x0, y1 - y0, true), x: x0, y: y0, off: null };
+    }
+    const O = L.ov;
+    if (O.off !== off) {
+      const c = O.cv.getContext('2d');
+      c.clearRect(0, 0, O.cv.width, O.cv.height);
+      for (let i = 0; i < L.lit.length; i++) if (occupied(L.occ[i], L.Ly, off, L.masks[i])) masked(c, L.lit[i], L.Ly, off, L.masks[i], O.x, O.y);
+      O.off = off;
+    }
+    return O;
   }
   /** prefix sums of tile columns holding cloud within the rows mask m covers */
   function columnOcc(Ly, m) {
@@ -1269,7 +1299,7 @@
       // mid: fair-weather cumulus, their crowns below the title corner
       for (const x of [40, 165, 290, 410, 530]) if (broken || rng() < 0.9) out.mid.push([x + r(-16, 16), r(108, 118), r(42, 66), r(15, 20), 'heap']);
       // high: a few small ones that only sway, clear of the sun and the title corner
-      out.near.push([258, 38, 46, 13, 'heap'], [336, 20, 26, 9, 'heap'], [458, 30, 22, 8, 'heap']);
+      out.near.push([258, 38, 46, 13, 'heap'], [336, 20, 26, 9, 'heap'], [444, 30, 22, 8, 'heap']);
       return out;
     }
     if (mode === 'dusk') {
@@ -1403,7 +1433,10 @@
     const off = layerOff(t, Ly);
     if (Ly.osc) ctx.drawImage(L.cv, off, Ly.y);
     else for (let x = off - Ly.w; x < W; x += Ly.w) ctx.drawImage(L.cv, x, Ly.y);
-    if (L.lit) for (let i = 0; i < L.lit.length; i++) if (occupied(L.occ[i], Ly, off, L.masks[i])) masked(ctx, L.lit[i], Ly, off, L.masks[i]);
+    if (L.lit) {
+      const O = litOverlay(L, off);
+      if (O) ctx.drawImage(O.cv, O.x, O.y);
+    }
     if (L.flash) {
       const f = flashState(t, all.strikes);
       if (f && f.lv > 0.12) {

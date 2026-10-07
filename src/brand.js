@@ -127,9 +127,10 @@
    *   H F f e d o   frame metal, highlight -> darkest (lit from the upper left)
    *   k             black enamel
    *   W S s z       the silver skyline (W top light, S bright, s mid, z shaded)
-   * The skyline is the emblem's own: a slim tower with an antenna on the
-   * left, a broad slab with a slanted roof on the right, both standing on the
-   * bridge deck, under a strip of black sky so it reads as a skyline.
+   * The skyline is the emblem's own: a tower with an antenna, lit face and
+   * shaded face, and a slab with a slanted roof beside it, under black sky.
+   * The towers touch and share one silhouette (lone 1 px bars would read as
+   * letters); the shaded faces keep the buildings apart.
    */
   const PLAQUE = {
     // 9 x 7: the plaque on a lobby pier

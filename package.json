@@ -1,0 +1,29 @@
+{
+  "name": "purrfect-year",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Purrfect Year: an animated pixel-art diary of one year, a seamless 240 s loop per entry, with tools to check it and export videos.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "setup": "playwright install chromium",
+    "shot": "node tools/shot.mjs",
+    "sheet": "node tools/sheet.mjs",
+    "verify": "node tools/verify.mjs",
+    "verify:all": "node tools/verify.mjs --quick --edition all",
+    "perf": "node tools/perf.mjs",
+    "regress": "node tools/regress.mjs",
+    "review": "node tools/review-kit.mjs",
+    "probe": "node tools/make-year.mjs --probe",
+    "video": "node tools/make-year.mjs",
+    "whatsapp": "node tools/make-year.mjs --whatsapp",
+    "loop": "node tools/render-video.mjs",
+    "soundtrack": "node tools/soundtrack.mjs",
+    "build": "node tools/build.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

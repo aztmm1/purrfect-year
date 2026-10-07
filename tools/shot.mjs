@@ -11,7 +11,7 @@ import { openDiorama, parseArgs, parseCrop, dataUrlToBuffer } from './lib.mjs';
 const a = parseArgs();
 const times = String(a.t ?? '0').split(',').map(Number);
 const scale = Number(a.scale ?? 2);
-const out = a.out || 'shot.png';
+const out = a.out || 'out/shot.png';
 const crop = parseCrop(a.crop);
 const { browser, page, errors } = await openDiorama({ only: a.only, skip: a.skip, view: a.view, loop: a.loop });
 fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });

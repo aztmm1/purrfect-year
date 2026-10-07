@@ -125,7 +125,6 @@
   // drawing in front of lit glass: plain pixels erase the emissive mask
   // ------------------------------------------------------------------
   let gF = null;
-  let gU = null;
   function front(g) {
     if (!gF) {
       const m = HD.buffers.emissive.getContext('2d');
@@ -143,9 +142,6 @@
         fillStyle: '#fff',
       };
       gF = HD.makeGfx(HD.buffers.scene.getContext('2d'), proxy);
-      // a twin whose "emissive" calls stay plain: lamps by day
-      gU = Object.assign({}, gF);
-      gU.em = gF;
     }
     gF.em = g.em;
     return gF;
@@ -230,8 +226,12 @@
       const col = cols[k % cols.length];
       const b = { x, y: y + 1, col, seed: (o.seed || 0) * 131 + k, big: !!o.big };
       bulbs.push(b);
-      if (S.lit) S.bulbs.push(b);
-      else {
+      if (S.lit) {
+        S.bulbs.push(b);
+        const ramp = bulbRamp(col);
+        S.E.set(x, y + 2, ramp[1]);
+        if (b.big) S.E.set(x + 1, y + 1, ramp[1]);
+      } else {
         const gl = BULB_GLASS[col] || BULB_GLASS.gold;
         S.L.set(x, y + 1, nt(mix(gl, '#ffffff', 0.15), 1.05));
         S.L.set(x, y + 2, nt(gl));
@@ -245,11 +245,7 @@
     const e = g.em || g;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
-      const ramp = bulbRamp(b.col);
-      const lv = T.noise(t, 2.8, b.seed + 77) < 0.28 ? 1 : 2;
-      e.px(b.x, b.y, ramp[lv]);
-      e.px(b.x, b.y + 1, ramp[lv - 1]);
-      if (b.big) e.px(b.x + 1, b.y, ramp[lv - 1]);
+      e.px(b.x, b.y, bulbRamp(b.col)[T.noise(t, 2.8, b.seed + 77) < 0.28 ? 1 : 2]);
     }
   }
   /** a few aggregated pools of light along each string */
@@ -607,6 +603,7 @@
   function newScene(ed) {
     return {
       L: new Layer(),
+      E: new Layer(), // static emissive pixels (bulb bases, diya oil)
       lit: ed.light === 'night' || ed.light === 'dusk',
       bulbs: [],
       strings: [],
@@ -1168,19 +1165,78 @@
   // ------------------------------------------------------------------
   // light sources registered by the layouts
   // ------------------------------------------------------------------
+  /** a clay diya, bottom centre (x, y): the body is baked, the flame flickers per frame (festive look) */
   function diya(S, x, y, seed) {
-    if (S.lit) S.diyas.push({ x, y, seed });
-    else {
-      S.L.hl(x - 1, x + 1, y, nt(P.pumpkin[1]));
-      S.L.hl(x - 2, x + 2, y - 1, nt('#a85a30'));
-      S.L.hl(x - 2, x + 2, y - 2, nt('#c87040'));
-      S.L.set(x + 3, y - 2, nt('#a85a30'));
+    S.L.hl(x - 1, x + 1, y, P.pumpkin[1]);
+    S.L.hl(x - 2, x + 2, y - 1, P.pumpkin[2]);
+    S.L.hl(x - 2, x + 2, y - 2, P.pumpkin[4]);
+    S.L.set(x + 3, y - 2, P.pumpkin[3]);
+    if (S.lit) {
+      S.E.hl(x - 1, x + 1, y - 2, P.amber[3]); // oil catching the flame
+      S.diyas.push({ x, y, seed });
     }
   }
+  /**
+   * Festive lanterns (HD.festive look). A lantern whose sway stays under
+   * half a pixel is baked at rest (dim flicker state) into the static
+   * layers, and only its bright flicker frame is overlaid per frame; a
+   * swaying one is drawn from a cache of rendered states.
+   */
+  const lanternCache = new Map();
+  const flickHi = (t, seed) => (T.flicker(T.step(t, 8), seed + 11, 0.9) > 0.5 ? 1 : 0);
+  /** render F.lantern at time t into a plain + emissive canvas pair, hook at (8, 1) */
+  function renderLantern(x, y, t, seed, kind, o, lit) {
+    const cp = HD.canvas(17, 24, true);
+    const ce = HD.canvas(17, 24, true);
+    const xp = cp.getContext('2d');
+    const xe = ce.getContext('2d');
+    xp.translate(8 - x, 1 - y);
+    xe.translate(8 - x, 1 - y);
+    const gp = HD.makeGfx(xp);
+    gp.em = lit ? HD.makeGfx(xe) : gp;
+    F.lantern(gp, x, y, t, seed, kind, o);
+    return { p: cp, e: lit ? ce : null };
+  }
+  /** first loop time at which the lantern's flicker is in state hi */
+  function timeWith(seed, hi) {
+    for (let t = 0; t < HD.LOOP; t += 0.125) if (flickHi(t, seed) === hi) return t;
+    return 0;
+  }
+  function copyInto(L, cv, x0, y0) {
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    for (let y = 0; y < cv.height; y++)
+      for (let x = 0; x < cv.width; x++) {
+        const i = (y * cv.width + x) * 4;
+        if (d[i + 3] > 0) L.set(x0 + x, y0 + y, CO.css(d[i], d[i + 1], d[i + 2]));
+      }
+  }
   function lantern(S, x, y, seed, kind, opts) {
-    S.lanterns.push({ x, y, seed, kind, opts: opts || {} });
-    // the hook it hangs from
-    S.L.set(x, y, nt('#3a3a40'));
+    const o = opts || {};
+    const amp = o.amp === undefined ? 0.12 : o.amp;
+    const len = o.len === undefined ? 3 : o.len;
+    S.L.set(x, y, nt('#3a3a40')); // the hook
+    if (Math.abs(Math.sin(amp) * len) < 0.5) {
+      const lo = renderLantern(x, y, timeWith(seed, 0), seed, kind, o, S.lit);
+      copyInto(S.L, lo.p, x - 8, y - 1);
+      if (lo.e) copyInto(S.E, lo.e, x - 8, y - 1);
+      if (S.lit) S.lanterns.push({ x, y, seed, kind, opts: o, hi: renderLantern(x, y, timeWith(seed, 1), seed, kind, o, true).e });
+      else S.lanterns.push({ x, y, seed, kind, opts: o, still: true });
+    } else S.lanterns.push({ x, y, seed, kind, opts: o });
+  }
+  function drawLantern(g, l, t, lit) {
+    if (l.still) return;
+    if (l.hi) {
+      if (flickHi(t, l.seed)) g.em.sprite(l.hi, l.x - 8, l.y - 1);
+      return;
+    }
+    const o = l.opts;
+    const [bx, by] = F.lanternPos(l.x, l.y, t, l.seed, o);
+    const hi = flickHi(t, l.seed);
+    const key = l.kind + '|' + (o.size || 'big') + '|' + (o.len || 3) + '|' + (bx - l.x) + '|' + (by - l.y) + '|' + hi + '|' + (lit ? 1 : 0);
+    let v = lanternCache.get(key);
+    if (!v) lanternCache.set(key, (v = renderLantern(l.x, l.y, t, l.seed, l.kind, o, lit)));
+    g.sprite(v.p, l.x - 8, l.y - 1);
+    if (v.e) g.em.sprite(v.e, l.x - 8, l.y - 1);
   }
 
   // the low planter wall at the back of each plaza (drawn by the street
@@ -1230,7 +1286,7 @@
       if (f5) bulbString(S, railCord(f5, 3, 2), { colors: ['gold'], spacing: 3, seed: 3 });
       if (f2 && !diyasOn) bulbString(S, railCord(f2, 2, 2), { colors: ['gold'], spacing: 3, seed: 4 });
       // festoon across the plaza
-      bulbString(S, [[pl.building.x1 + 1, 175, 2], [ta, 180, 7], [tb, 180, 3], [pz.x1 + 8, 177]], { colors: ['warm'], spacing: 5, big: true, seed: 9, every: 3, r: 15, i: 0.15 });
+      bulbString(S, [[pl.building.x1 + 1, 175, 2], [ta, 180, 7], [tb, 180, 3], [pz.x1 + 8, 177]], { colors: ['warm'], spacing: 5, big: true, seed: 9, every: 4, r: 14, i: 0.17 });
     }
     const bed = BED.apt1;
     if (diyasOn) for (let x = bed.x0 + 4, k = 0; x <= bed.x1 - 5; x += 10, k++) diya(S, x, bed.cap, 80 + k);
@@ -1379,7 +1435,7 @@
       for (let k = 0; k < 5; k++) {
         const x = R(ta + 8 + ((tb - ta - 16) * k) / 4);
         const p = pts.find((q) => q[0] === x);
-        lantern(S, x, p[1] + 1, 50 + k, 'red', { len: 2, size: k % 2 ? 'small' : undefined });
+        lantern(S, x, p[1] + 1, 50 + k, 'red', { len: 3, amp: 0.22, size: k % 2 ? 'small' : undefined });
       }
       const x = R((pl.building.x1 + ta) / 2);
       const p = pts.find((q) => q[0] === x);
@@ -1443,7 +1499,7 @@
       for (let k = 0; k < 6; k++) {
         const x = R(ta + 6 + ((tb - ta - 12) * k) / 5);
         const p = pts.find((q) => q[0] === x);
-        lantern(S, x, p[1] + 1, 70 + k, 'paper', { len: 1, size: k % 2 ? 'small' : undefined });
+        lantern(S, x, p[1] + 1, 70 + k, 'paper', { len: 2, amp: 0.3, size: k % 2 ? 'small' : undefined });
       }
       const x = R((pl.building.x1 + ta) / 2);
       const p = pts.find((q) => q[0] === x);
@@ -1532,7 +1588,9 @@
     if (pl.id === 'apt1') buildApt1(S, ed, pl);
     else if (pl.id === 'apt2') buildApt2(S, ed, pl);
     S.stat = S.L.bake();
+    S.glow = S.E.bake();
     S.L = null;
+    S.E = null;
     if (!S.stat && !S.diyas.length && !S.lanterns.length && !S.flags.length && !S.bulbs.length && !S.jacks.length) return null;
     return S;
   });
@@ -1546,6 +1604,7 @@
     if (!S) return;
     const gf = front(g);
     if (S.stat) gf.sprite(S.stat.img, S.stat.x, S.stat.y);
+    if (S.glow) g.em.sprite(S.glow.img, S.glow.x, S.glow.y);
     // flags flutter on the shared breeze
     if (S.flags.length) {
       const br = HD.summer ? HD.summer.breeze(t) : 0;
@@ -1572,9 +1631,8 @@
       gf.px(sp.x - 2, y + 2, sk);
       gf.px(sp.x + 2, y + 2, sk);
     }
-    const gl = S.lit ? gf : gU;
-    for (const l of S.lanterns) F.lantern(gl, l.x, l.y, t, l.seed, l.kind, l.opts);
-    for (const d of S.diyas) F.diya(gf, d.x, d.y, t, d.seed);
+    for (const l of S.lanterns) drawLantern(g, l, t, S.lit);
+    for (const d of S.diyas) F.flame(g, d.x + 3, d.y - 2, t, d.seed, 1);
     if (S.scarf) {
       const s = S.scarf;
       const fl = T.noise(T.step(t, 6), 3.3, 919) > 0.55 ? 1 : 0;
@@ -1629,7 +1687,7 @@
       }
     }
     if (!S.lit) return;
-    for (const d of S.diyas) F.diyaLight(L, d.x, d.y, t, d.seed, 15, 0.3);
+    for (const d of S.diyas) F.diyaLight(L, d.x, d.y, t, d.seed, 12, 0.3);
     for (const l of S.lanterns) F.lanternLight(L, l.x, l.y, t, l.seed, l.kind, l.opts);
     stringLights(L, t, S);
     const ts = T.step(t, 9);

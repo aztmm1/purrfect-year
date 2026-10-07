@@ -97,7 +97,7 @@
     pod: '#3c404a', pod2: '#424651', podLn: '#32353e', podHi: '#4c515d', podDk: '#2a2d35',
     or: '#c4642a', orDk: '#7e3d1c',
     gD: '#111725', gM: '#161e30', gHi: '#243049', gHi2: '#2f3c5a', gLo: '#0d121d',
-    film: '#1b2130', filmHi: '#252c3c',
+    film: '#1b2130', filmHi: '#252c3c', cur: '#232838', curLn: '#1a1e2b',
     fin: '#0f1117', finHi: '#252a33', finL: '#252a33', finR: '#0c0e13',
     rail: '#090b10', railHi: '#22262f',
     louv: '#252831', louvHi: '#2f333d',
@@ -241,6 +241,17 @@
       }
     }
     g.hline(x, x + w.w - 1, y + w.h - 1, pal.gLo);
+    // some flats have drawn their curtains or blinds for the night
+    const r = h2(w.i, 7, seed);
+    const tr = w.kind === 'big' ? 4 : 3;
+    if (w.kind !== 'stair' && r < 0.16) {
+      g.rect(x, y + tr + 1, w.w, w.h - tr - 2, pal.cur);
+      g.vline(x + (w.w >> 1), y + tr + 1, y + w.h - 2, pal.curLn);
+    } else if (w.kind !== 'stair' && r < 0.27) {
+      const by = y + tr + 1 + Math.floor(h2(w.i, 8, seed) * 4);
+      g.rect(x, y + tr + 1, w.w, by - y - tr, pal.cur);
+      for (let yy = y + tr + 2; yy <= by; yy += 2) g.hline(x, x + w.w - 1, yy, pal.curLn);
+    }
   }
 
   /** a sunlit pane reflecting the golden sky (non-emissive, relit) */
@@ -403,6 +414,7 @@
         drawRailing(g, pal);
         drawCanopy(g, e, pal);
         if (pal.day) drawShadows(g, pal);
+        else drawNightDepth(g);
       });
     });
     const lit = [];
@@ -747,6 +759,22 @@
     for (let x = t.x0; x <= t.x1; x += 13) g.vline(x, top - 1, POD - 1, pal.rail);
   }
 
+  /** night: the lower floors sink a little into the dark street canyon */
+  function drawNightDepth(g) {
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    const band = (y0, y1, c) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(TW.x0, y0, GW.x1 - TW.x0 + 1, y1 - y0 + 1);
+    };
+    band(FT[5], FT[4] - 1, '#f2f2f6');
+    band(FT[4], FT[3] - 1, '#e4e4ec');
+    band(FT[3], POD - 1, '#d6d6e2');
+    ctx.restore();
+    g.reset();
+  }
+
   /** golden hour: shadows thrown to the left by the low sun on the right */
   function drawShadows(g, pal) {
     const ctx = g.ctx;
@@ -1033,12 +1061,12 @@
       [TW.x0, SHOP_Y0 - 6, BK.x1, SHOP_Y0 - 6],
     ];
     PL.drips = [
-      { x: GW.x0, y: POD + 1 },
-      { x: 308, y: POD + 1 },
-      { x: 327, y: POD + 1 },
-      { x: GW.x1, y: POD + 1 },
-      { x: BOX.x0 + 1, y: BOX.y1 + 2 },
-      { x: BOX.x1 - 1, y: BOX.y1 + 2 },
+      { x: GW.x0, y: POD + 3 },
+      { x: 308, y: POD + 3 },
+      { x: 327, y: POD + 3 },
+      { x: GW.x1, y: POD + 3 },
+      { x: BOX.x0, y: BOX.y1 + 3 },
+      { x: BOX.x1 + 1, y: BOX.y1 + 3 },
       { x: TW.x0, y: TW.top + 3 },
       { x: GW.x1, y: GW.top + 3 },
       { x: 190, y: POD + 2 },

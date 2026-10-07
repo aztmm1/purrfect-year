@@ -159,6 +159,11 @@
       rim = hx('#5a6a9a');
       lit = 1;
     }
+    if (ed.place === 'marina' && mode === 'day') {
+      // a clear bay day: lighter haze so the far landmarks read
+      A = 0.44;
+      H = 0.3;
+    }
     if (over) A += 0.05;
     A += 0.14 * (wx.rain || 0) + 0.22 * (wx.snow || 0);
     return {
@@ -196,6 +201,7 @@
     this.tw = []; // windows that come and go
     this.beacons = [];
     this.glints = [];
+    this.glows = []; // soft halos drawn per frame (lit crowns, floodlit stone)
     this.top = new Int16Array(W).fill(999);
   }
   const BK = Bake.prototype;
@@ -209,6 +215,15 @@
     this.d[i + 2] = c[2];
     this.d[i + 3] = 255;
     if (y < this.top[x]) this.top[x] = y;
+  };
+  BK.clear = function (x, y) {
+    if (x < 0 || x >= W || y < 0 || y >= BH) return;
+    this.d[(y * W + x) * 4 + 3] = 0;
+  };
+  /** a 1 px line of one colour */
+  BK.line = function (x0, y0, x1, y1, c) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    for (let i = 0; i <= n; i++) this.set(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), c);
   };
   BK.get = function (x, y) {
     const i = (y * W + x) * 4;
@@ -394,7 +409,7 @@
       const rx = x + 1 + Math.floor(r(6) * Math.max(1, w - 5));
       const roof = r(4) < 0.3 && w > 5 ? [[rx, rx + 2, 1 + Math.floor(r(7) * 2)]] : null;
       const win = o.win ? Object.assign({}, o.win, { ox: Math.floor(r(8) * o.win.px) }) : null;
-      this.tower({ x0: x, x1: xe, top: tp, d: o.d, mat, win, p: o.p, roof, cap: true });
+      this.tower({ x0: x, x1: xe, top: tp, base: o.base, d: o.d, mat, win, p: o.p, roof, cap: true });
       x = xe + 1 + (r(5) < 0.2 ? 1 : 0);
       i++;
     }
@@ -631,116 +646,483 @@
   const MID = 0.62;
   const NEAR = 0.34;
 
-  /** the generic downtown landmarks seen far off: a crown tower, a mast tower, a glass slab */
-  function bostonTowers(B, d, set) {
-    const side = { w: 2, at: set.sideAt };
-    if (set.crown !== undefined) {
-      const x0 = set.crown;
-      const tp = set.crownTop;
-      B.tower({ x0, x1: x0 + 8, top: tp, d, mat: M.pale, side, win: { px: 2, py: 2, w: 1, h: 1, mx: 1 }, p: 0.24 });
-      for (let y = tp - 6; y < tp; y++) {
-        const hw = Math.round(Math.sqrt(Math.max(0, 1 - ((tp - y) / 7) ** 2)) * 4);
-        for (let x = x0 + 4 - hw; x <= x0 + 4 + hw; x++) {
-          let c = B.c(M.steel, x > x0 + 4 ? FR : FF, d, x, y);
-          if (B.lk.lit > 0 && (y === tp - 3 || (x - x0) % 3 === 1)) c = mix(c, hx('#c8d8f0'), 0.3); // the softly lit lattice
-          B.set(x, y, c);
+  // The real skyline as seen from the riverside in Somerville, looking
+  // across the Mystic toward Charlestown and downtown: the two bridges and
+  // the obelisk on the hill on the left, the downtown cluster with the old
+  // clock tower, then the tall Back Bay towers on the right. Shapes and
+  // relative heights follow the real buildings (1 px is about 10.5 ft);
+  // nothing is labelled.
+  const BOS = {
+    granite: hx('#dcc8a6'),
+    granite2: hx('#bfb19c'),
+    pink: hx('#c9a596'),
+    alu: hx('#b4b8be'),
+    pru: hx('#a9a59c'),
+    blue: hx('#3d78c8'),
+    blueD: hx('#2c5c9a'),
+    teal: hx('#6c93a6'),
+    zakim: hx('#eef0f2'),
+    cable: hx('#d9dde3'),
+    tobin: hx('#4c7f5a'),
+    roofs: hx('#7c6a62'),
+  };
+  const FLOOD = hx('#f6e6c0'); // warm floodlight on stone
+  const ZBLUE = hx('#78a6ff'); // the bridge's blue night lighting
+  const CROWN = hx('#e8f0ff'); // a lit crown
+
+  /** floodlit at dusk and night: mix toward the light by k */
+  BK.flood = function (c, k, light) {
+    const L = this.lk.lit;
+    return L > 0 ? mix(c, light || FLOOD, Math.min(1, k * (0.35 + 0.65 * L))) : c;
+  };
+
+  /**
+   * a glass body with a per-column top and face: o = {top(x), face(x), mat,
+   * mul, fl, y0 (floor origin), round: true for banded curvature}
+   */
+  BK.glassBody = function (b, x0, x1, base, o) {
+    const lk = this.lk;
+    const dep = b.d;
+    const mul = o.mul || 2;
+    const fl = o.fl || 2;
+    const y0 = o.y0;
+    const amt = lk.mode === 'day' ? [0.08, 0.2, 0.32, 0.44] : lk.mode === 'golden' ? [0.06, 0.18, 0.32, 0.46] : lk.mode === 'dusk' ? [0.06, 0.12, 0.2, 0.26] : null;
+    for (let x = x0; x <= x1; x++) {
+      const tp = Math.round(o.top(x));
+      const face = o.face(x);
+      const kf = face === lk.sun ? 1.25 : face === FF ? 1 : 0.55;
+      for (let y = tp; y <= base; y++) {
+        const v = (y - y0) / Math.max(1, base - y0);
+        const floor = Math.floor((y - y0) / fl);
+        const isFloor = (((y - y0) % fl) + fl) % fl === fl - 1;
+        let c = this.c(o.mat, face, dep, x, y);
+        if (amt) c = mix(c, lk.refl, Math.min(0.8, amt[band(v, 3, x, y, 0.4)] * kf * (o.refl === undefined ? 1 : o.refl)));
+        else c = mix(c, [8, 10, 22], 0.15);
+        const isMul = (x - x0) % mul === mul - 1;
+        if (isMul) c = mix(c, [10, 12, 22], lk.mode === 'night' ? 0.22 : 0.1);
+        if (isFloor) c = mix(c, [10, 12, 22], lk.mode === 'night' ? 0.2 : 0.08);
+        const on = lk.lit > 0 && hash(b.id, floor, this.ls, 21) < b.p * lk.lit;
+        if (on && !isFloor && !isMul && hash(x >> 1, floor, b.id, this.ls) < 0.75) {
+          const office = hash(b.id, floor, 23, this.ls) < b.cool ? COOL[1] : OFFICE;
+          c = mix(mix(office, lk.fog, Math.min(0.6, lk.A * dep * 0.7)), c, lk.mode === 'dusk' ? 0.5 : 0.3);
         }
+        if (y === tp) c = mix(c, this.c(o.mat, FT, dep, x, y), 0.6);
+        this.set(x, y, c);
       }
-      B.set(x0 + 4, tp - 7, B.c(M.steel, FT, d, x0 + 4, tp - 7));
     }
-    if (set.mast !== undefined) {
-      const x0 = set.mast;
-      const tp = set.mastTop;
-      B.tower({ x0, x1: x0 + 11, top: tp, d, mat: M.concrete, side, win: { px: 2, py: 2, w: 1, h: 1, mx: 1, my: 3 }, p: 0.26 });
-      B.rect(x0 + 2, tp - 4, x0 + 9, tp - 1, M.concrete, FF, d);
-      B.rect(x0 + 5, tp - 7, x0 + 6, tp - 5, M.steel, FF, d);
-      B.mast(x0 + 5, tp - 22, tp - 8, M.steel, d);
-      B.mast(x0 + 6, tp - 14, tp - 8, M.steel, d);
-      if (B.lk.lit > 0) for (let x = x0 + 1; x <= x0 + 10; x++) B.set(x, tp + 1, mix(WARM[x % 2 ? 1 : 3], B.lk.fog, 0.35));
-      B.beacon(x0 + 5, tp - 23, 3.2, 0.1);
+  };
+
+  /** the tall slab with pinstripes, the lit top band and the radio mast */
+  function prudential(B, x0, base, d) {
+    const lk = B.lk;
+    const w = 12;
+    const top = base - 71;
+    const b = { id: ++B.ids, d, p: 0.3, cool: 0.2 };
+    // the shaded left side
+    for (let y = top + 1; y <= base; y++)
+      for (let x = x0 - 3; x < x0; x++) {
+        let c = B.c(B.lk.mode === 'dusk' ? BOS.pru : BOS.pru, FL, d, x, y);
+        if (x === x0 - 2) c = mix(c, B.c(M.glassD, FL, d, x, y), 0.6);
+        B.set(x, y, c);
+      }
+    // the front: aluminium piers on every other column, the glass between
+    for (let y = top; y <= base; y++)
+      for (let x = x0; x < x0 + w; x++) B.set(x, y, B.c(BOS.pru, y === top ? FT : FF, d, x, y));
+    B.grid(b, { px: 2, py: 3, w: 1, h: 2, mx: 0, my: 6, mb: 0, ox: 1 }, x0, x0 + w - 1, top, base, FF);
+    // the top: an observation band of continuous glass under the roof
+    const band = top + 2;
+    for (let x = x0 - 3; x < x0 + w; x++)
+      for (let y = band; y <= band + 2; y++) {
+        let c = B.c(M.glassD, x < x0 ? FL : FF, d, x, y);
+        if (lk.mode === 'day' || lk.mode === 'golden') c = mix(c, lk.refl, y === band ? 0.4 : 0.2);
+        if (lk.lit > 0) c = mix(c, mix(CROWN, lk.fog, 0.2), (y === band + 1 ? 0.75 : 0.5) * (0.4 + 0.6 * lk.lit));
+        B.set(x, y, c);
+      }
+    // the penthouse and the mast
+    B.rect(x0 + 2, top - 3, x0 + 9, top - 1, BOS.pru, FF, d);
+    for (let x = x0 + 2; x <= x0 + 9; x++) B.set(x, top - 3, B.c(BOS.pru, FT, d, x, top - 3));
+    B.rect(x0 + 5, top - 7, x0 + 6, top - 4, M.steel, FF, d);
+    B.mast(x0 + 5, top - 19, top - 8, M.silver, d);
+    for (let x = x0 + 4; x <= x0 + 7; x++) B.set(x, top - 12, B.c(M.steel, FT, d, x, top - 12));
+    if (lk.snow) B.snowCap(x0 - 3, x0 + w - 1, top, d);
+    B.beacon(x0 + 5, top - 20, 3.2, 0.1);
+    B.beacon(x0 + 5, top - 12, 3.2, 0.6);
+  }
+
+  /** the tall blue-glass rhomboid slab: a narrow notched end on the left, the broad face */
+  function clarendon(B, x0, base, d) {
+    const lk = B.lk;
+    const top = base - 75;
+    const b = { id: ++B.ids, d, p: 0.24, cool: 0.35 };
+    const sideF = lk.sun === FL ? FF : FL;
+    B.glassBody(b, x0, x0 + 13, base, {
+      top: (x) => (x <= x0 + 3 ? top + 1 : top),
+      face: (x) => (x <= x0 + 3 ? sideF : FF),
+      mat: BOS.blue,
+      mul: 2,
+      fl: 2,
+      y0: top,
+      refl: 0.55,
+    });
+    // the full-height notch on the narrow end and the sharp corner
+    for (let y = top + 2; y <= base; y++) {
+      B.set(x0 + 1, y, mix(B.c(BOS.blueD, FL, d, x0 + 1, y), [8, 10, 22], 0.25));
+      B.set(x0 + 4, y, mix(B.get(x0 + 4, y) || B.c(BOS.blue, FF, d, x0 + 4, y), B.c(M.white, lk.sun, d, x0 + 4, y), lk.mode === 'night' ? 0.12 : 0.35));
     }
-    if (set.slab !== undefined) {
-      const x0 = set.slab;
-      const tp = set.slabTop;
-      const b = { id: ++B.ids, d, p: 0.24, cool: 0.2 };
-      B.glassWall(b, x0, x0 + 10, tp, B.lk.hz, FF, { mat: M.glass, mul: 2, fl: 2 });
-      const sx = set.sideAt === 'R' ? x0 + 11 : x0 - 2;
-      B.glassWall(b, sx, sx + 1, tp + 1, B.lk.hz, set.sideAt === 'R' ? FR : FL, { mat: M.glass, mul: 2, fl: 2 });
-      for (let y = tp + 2; y <= B.lk.hz; y++) B.set(x0 + 5, y, B.c(M.glassD, FL, d, x0 + 5, y)); // the face notch
-      for (let x = x0; x <= x0 + 10; x++) B.set(x, tp, B.c(M.glass, FT, d, x, tp));
-      if (B.lk.snow) B.snowCap(x0, x0 + 10, tp, d);
+    B.clear(x0 + 1, top + 1);
+    if (lk.snow) B.snowCap(x0, x0 + 13, top, d);
+    B.beacon(x0 + 4, top - 1, 3.6, 0.35);
+    B.beacon(x0 + 13, top - 1, 3.6, 0.85);
+  }
+
+  /** the slim curved glass tower with a sloped, stepped crown */
+  function millennium(B, x0, base, d) {
+    const w = 9;
+    const top = base - 65;
+    const b = { id: ++B.ids, d, p: 0.36, cool: 0.15 };
+    const lk = B.lk;
+    B.glassBody(b, x0, x0 + w - 1, base, {
+      top: (x) => top + Math.max(0, Math.round((x - x0 - 1) * 0.9)),
+      face: (x) => {
+        const u = (x - x0) / (w - 1);
+        return u < 0.25 ? FL : u > 0.66 ? FR : FF;
+      },
+      mat: BOS.teal,
+      mul: 3,
+      fl: 2,
+      y0: top,
+    });
+    // the curve: a soft highlight band toward the light
+    const hx0 = lk.sun === FL ? x0 + 1 : x0 + w - 3;
+    for (let y = top + 8; y <= base; y++) B.set(hx0, y, mix(B.get(hx0, y), lk.mode === 'night' ? lk.rim : lk.refl, lk.mode === 'night' ? 0.12 : 0.3));
+    // a thin fin standing proud of the crown
+    for (let y = top - 3; y < top; y++) B.set(x0, y, B.c(M.silver, FT, d, x0, y));
+    B.beacon(x0, top - 4, 3.4, 0.5);
+  }
+
+  /** the curved triangular glass tower whose faces lean in at the crown */
+  function dalton(B, x0, base, d) {
+    const w = 10;
+    const top = base - 70;
+    const b = { id: ++B.ids, d, p: 0.28, cool: 0.2 };
+    const lk = B.lk;
+    const edge = x0 + 4; // the vertical corner between the two curved faces
+    const inset = (y) => (y < top + 18 ? Math.round((top + 18 - y) / 10) : 0);
+    for (let y = top; y <= base; y++) {
+      const k = inset(y);
+      const xa = x0 + k;
+      const xb = x0 + w - 1 - k;
+      for (let x = xa; x <= xb; x++) {
+        const face = x < edge ? FF : x === edge ? FT : lk.sun === FR ? FR : FL;
+        let c = B.c(M.glass, face, d, x, y);
+        const v = (y - top) / (base - top);
+        if (lk.mode === 'day' || lk.mode === 'golden') c = mix(c, lk.refl, (x === xa + 1 || x === edge + 2 ? 0.42 : 0.2) * (1 - v * 0.5));
+        else if (lk.mode === 'dusk') c = mix(c, lk.refl, x === edge + 2 ? 0.22 : 0.08);
+        else c = mix(c, [8, 10, 22], 0.12);
+        if ((y - top) % 2 === 1) c = mix(c, [10, 12, 22], 0.1);
+        if (lk.lit > 0 && hash(b.id, (y - top) >> 1, B.ls, 21) < 0.3 * lk.lit && (y - top) % 2 === 0 && hash(x >> 1, y, b.id, 4) < 0.7) c = mix(mix(OFFICE, lk.fog, 0.4), c, 0.35);
+        B.set(x, y, c);
+      }
+    }
+    // the glass screen of the crown runs a little higher than the roof
+    for (let x = x0 + 4; x <= x0 + 5; x++) B.set(x, top - 1, B.c(M.glass, FT, d, x, top - 1));
+    B.beacon(x0 + 4, top - 2, 3.3, 0.2);
+  }
+
+  /** the old granite clock tower: classical base, a slim shaft, the clock, a colonnade and a pyramid */
+  function customHouse(B, cx, base, d) {
+    const lk = B.lk;
+    const g = BOS.granite;
+    const b = { id: ++B.ids, d, p: 0.4, cool: 0 };
+    const st = (x, y, face) => {
+      let c = B.c(g, face, d, x, y);
+      if (lk.lit > 0) c = B.flood(c, 0.42 + (base - y) * 0.004);
+      B.set(x, y, c);
+    };
+    const side = lk.sun === FL ? FL : FR;
+    // the base block with its columns
+    for (let y = base - 10; y <= base; y++)
+      for (let x = cx - 7; x <= cx + 7; x++) {
+        st(x, y, x === cx + 7 ? side : y === base - 10 ? FT : FF);
+        if (y > base - 8 && y < base - 1 && (x - cx) % 2 === 0) B.set(x, y, B.c(g, FL, d, x, y));
+      }
+    // the shaft with slit windows
+    for (let y = base - 38; y < base - 10; y++) for (let x = cx - 3; x <= cx + 2; x++) st(x, y, x === cx + 2 ? side : x === cx - 3 ? FL : FF);
+    for (let y = base - 37; y < base - 11; y += 3) for (const x of [cx - 2, cx + 1]) B.win(b, x, y, 1, 2, FF, (y >> 2) & 7, x);
+    // the clock band: a pale dial, glowing at night
+    for (let y = base - 42; y < base - 38; y++) for (let x = cx - 3; x <= cx + 2; x++) st(x, y, FF);
+    const dial = lk.lit > 0 ? mix(hx('#fff4d6'), lk.fog, 0.1) : B.c(M.white, FF, d * 0.8, cx, base - 40);
+    for (const [x, y] of [[cx - 1, base - 41], [cx, base - 41], [cx - 1, base - 40], [cx, base - 40]]) B.set(x, y, dial);
+    // the cornice and the open colonnade under the pyramid
+    for (let x = cx - 4; x <= cx + 3; x++) st(x, base - 43, FT);
+    for (let y = base - 46; y < base - 43; y++) for (let x = cx - 3; x <= cx + 2; x++) {
+      if ((x - cx) % 2 !== 0) st(x, y, FF);
+      else B.set(x, y, lk.lit > 0 ? mix(hx(P.amber[5]), lk.fog, 0.25) : B.c(M.dark, FF, d, x, y));
+    }
+    for (let x = cx - 4; x <= cx + 3; x++) st(x, base - 47, FT);
+    // the pyramid roof
+    const PYR = [3, 3, 2, 2, 1, 1, 0];
+    PYR.forEach((hw, i) => {
+      const y = base - 48 - i;
+      for (let x = cx - hw - 1; x <= cx + hw; x++) st(x, y, x >= cx ? side : FF);
+    });
+    B.mast(cx, base - 58, base - 55, M.steel, d);
+    B.beacon(cx, base - 59, 3.8, 0.75);
+  }
+
+  /** a tower of the downtown cluster: kind 'ofc' (masts), 'flare' (flared top), 'round', 'fed' (louvres), 'box' */
+  function fidi(B, kind, x0, w, h, base, d, mat) {
+    const lk = B.lk;
+    const top = base - h;
+    const x1 = x0 + w - 1;
+    if (kind === 'round') {
+      const b = { id: ++B.ids, d, p: 0.3, cool: 0.2 };
+      B.glassBody(b, x0, x1, base, {
+        top: (x) => (x === x0 || x === x1 ? top + 1 : top),
+        face: (x) => ((x - x0) / (w - 1) < 0.25 ? FL : (x - x0) / (w - 1) > 0.66 ? FR : FF),
+        mat: mat || M.glassT,
+        mul: 2,
+        fl: 2,
+        y0: top,
+      });
+      B.rect(x0 + 3, top - 2, x1 - 3, top - 1, M.slate, FF, d);
+      return;
+    }
+    if (kind === 'box') {
+      const b = { id: ++B.ids, d, p: 0.3, cool: 0.3 };
+      B.glassBody(b, x0, x1, base, { top: () => top, face: () => FF, mat: mat || M.glassD, mul: 2, fl: 2, y0: top });
+      return;
+    }
+    const b = B.tower({ x0, x1, top, base, d, mat, win: kind === 'fed' ? null : { px: 2, py: 2, w: 1, h: 1, mx: 1, my: 2 }, p: 0.3 });
+    if (kind === 'fed') {
+      // horizontal aluminium louvres and a rounded top
+      for (let y = top + 2; y <= base; y++)
+        for (let x = x0; x <= x1; x++) if ((y - top) % 2 === 0) B.win(b, x, y, 1, 1, FF, (y - top) >> 1, x - x0);
+      B.clear(x0, top);
+      B.clear(x1, top);
+      for (let x = x0 + 1; x < x1; x++) B.set(x, top - 1, B.c(mat, FT, d, x, top - 1));
+    }
+    if (kind === 'ofc') {
+      // a setback crown and a pair of slender masts
+      B.rect(x0 + 2, top - 4, x1 - 2, top - 1, mat, FF, d);
+      for (let x = x0 + 2; x <= x1 - 2; x++) B.set(x, top - 4, B.c(mat, FT, d, x, top - 4));
+      B.mast(x0 + 3, top - 11, top - 5, M.silver, d);
+      B.mast(x1 - 3, top - 9, top - 5, M.silver, d);
+      B.beacon(x0 + 3, top - 12, 3.1, 0.4);
+    }
+    if (kind === 'flare') {
+      // the top flares out like a sharpened pencil, with a rounded cap
+      for (let y = top; y < top + 8; y++) {
+        const k = y < top + 5 ? 1 : 0;
+        B.set(x0 - k, y, B.c(mat, FL, d, x0 - k, y));
+        B.set(x1 + k, y, B.c(mat, lk.sun === FR ? FR : FF, d, x1 + k, y));
+      }
+      for (let x = x0; x <= x1; x++) B.set(x, top + 7, B.c(M.dark, FF, d, x, top + 7));
+      for (let x = x0; x <= x1; x++) B.set(x, top - 1, B.c(mat, FT, d, x, top - 1));
+      for (let x = x0 + 2; x <= x1 - 2; x++) B.set(x, top - 2, B.c(mat, FT, d, x, top - 2));
+    }
+    if (lk.snow) B.snowCap(x0, x1, top, d);
+  }
+
+  /** the white cable-stayed bridge: two inverted-Y towers, fans of stays, the deck (lit blue at night) */
+  function zakim(B, o) {
+    const lk = B.lk;
+    const d = o.d;
+    const deck = o.deck;
+    const top = o.top;
+    const night = lk.lit > 0;
+    const conc = (x, y, face) => {
+      let c = B.c(BOS.zakim, face, d, x, y);
+      if (night) c = mix(c, mix(ZBLUE, CROWN, 0.25), 0.55 * (0.4 + 0.6 * lk.lit));
+      return c;
+    };
+    let cab = mix(B.c(BOS.cable, FF, d, 0, top), lk.fog, 0.35);
+    if (night) cab = mix(cab, ZBLUE, 0.55 * lk.lit);
+    const apex = Math.round(deck - (deck - top) * 0.42);
+    // the stays first: a fan from the upper spire on each side of each tower
+    for (const t of o.towers) {
+      for (let k = 0; k < 6; k++) {
+        const ay = top + 4 + k * Math.max(1, Math.round((apex - top - 6) / 6));
+        const f = 1 - k * 0.15;
+        B.line(t.x, ay, t.x - Math.round(t.l * f), deck - 1, cab);
+        B.line(t.x + 1, ay, t.x + 1 + Math.round(t.r * f), deck - 1, cab);
+      }
+    }
+    // the deck: a pale edge, a darker fascia, the lamps
+    for (let x = o.x0; x <= o.x1; x++) {
+      B.set(x, deck, conc(x, deck, FT));
+      B.set(x, deck + 1, mix(conc(x, deck + 1, FF), [10, 12, 22], 0.25));
+      if (o.under) B.set(x, deck + 2, B.c(M.dark, FF, d, x, deck + 2));
+      if (night && x % 5 === 2) B.set(x, deck - 1, mix(hx(P.amber[6]), lk.fog, 0.15));
+    }
+    // the towers: legs straddling the deck, joined at the apex, a tapering spire
+    for (const t of o.towers) {
+      for (let y = apex; y <= deck + 3; y++) {
+        const sp = Math.round(((y - apex) / (deck - apex)) * 3.4);
+        B.set(t.x - sp, y, conc(t.x - sp, y, FL));
+        B.set(t.x + 1 + sp, y, conc(t.x + 1 + sp, y, lk.sun === FR ? FR : FF));
+      }
+      for (let y = top + 3; y < apex; y++) {
+        B.set(t.x, y, conc(t.x, y, FF));
+        B.set(t.x + 1, y, conc(t.x + 1, y, lk.sun === FR ? FR : FL));
+      }
+      for (let y = top; y < top + 3; y++) B.set(t.x, y, conc(t.x, y, FT));
+      B.beacon(t.x, top - 1, 3.4, t.x / 97);
+      if (night) B.glints.push({ x: t.x, y: top + 2, c: css(mix(CROWN, ZBLUE, 0.3)), per: 5, seed: t.x * 7, th: 0.35 });
+    }
+  }
+
+  /** the green cantilever truss bridge: an arched top chord over the main span */
+  function tobin(B, o) {
+    const lk = B.lk;
+    const d = o.d;
+    const deck = o.deck;
+    const chord = (x) => {
+      const u = (x - o.cx) / o.hw;
+      return Math.round(deck - 3 - (o.h - 3) * Math.max(0, 1 - u * u) - (Math.abs(u) > 1 ? 0 : 0));
+    };
+    const steel = (x, y, face) => {
+      const c = B.c(BOS.tobin, face, d, x, y);
+      return lk.mode === 'night' ? mix(c, mix(hx('#7fb08a'), lk.rim, 0.4), 0.28) : c;
+    };
+    for (let x = o.x0; x <= o.x1; x++) {
+      const yc = Math.min(deck - 3, chord(x));
+      B.set(x, yc, steel(x, yc, FT));
+      if (yc > o.top0) B.set(x, yc + 1, steel(x, yc + 1, FF));
+      // deck with its fascia
+      B.set(x, deck, steel(x, deck, FF));
+      B.set(x, deck + 1, mix(steel(x, deck + 1, FL), [10, 12, 22], 0.3));
+      B.set(x, deck - 1, B.c(M.concrete, FT, d, x, deck - 1));
+      // the web: verticals every 4 px, diagonals between them
+      if ((x - o.x0) % 4 === 0) for (let y = yc; y < deck; y++) B.set(x, y, steel(x, y, FL));
+      const ph = (x - o.x0) % 8;
+      const yd = ph < 4 ? yc + Math.round(((deck - yc) * ph) / 4) : yc + Math.round(((deck - yc) * (8 - ph)) / 4);
+      if (yd < deck && yd > yc) B.set(x, yd, steel(x, yd, FF));
+      if (lk.lit > 0 && x % 6 === 3) B.set(x, deck - 1, mix(hx(P.amber[5]), lk.fog, 0.2));
+    }
+    for (const px of o.piers) for (let y = deck + 2; y <= o.pierTo; y++) {
+      B.set(px, y, B.c(M.concrete, FF, d, px, y));
+      B.set(px + 1, y, B.c(M.concrete, FL, d, px + 1, y));
+    }
+  }
+
+  /** the granite obelisk on its hill, floodlit at dusk and night */
+  function obelisk(B, cx, base, h, d) {
+    const lk = B.lk;
+    const g = BOS.granite2;
+    const top = base - h;
+    const side = lk.sun === FL ? FL : FR;
+    for (let y = top; y <= base; y++) {
+      const v = (y - top) / h;
+      const hw = y < top + 2 ? 0 : 1;
+      const hr = y < top + 2 ? 0 : v < 0.6 ? 1 : 2;
+      for (let x = cx - hw; x <= cx + hr; x++) {
+        const face = y < top + 2 ? (x <= cx ? FT : side) : x > cx ? side : x === cx - hw ? FL : FF;
+        let c = B.c(g, face, d, x, y);
+        if (lk.lit > 0) c = B.flood(c, x > cx ? 0.85 : 0.62);
+        B.set(x, y, c);
+      }
+    }
+  }
+
+  /** a strip of low rooftops (row houses, a few gables and a steeple) */
+  function rowhouses(B, x0, x1, top, d, salt, o) {
+    o = o || {};
+    let x = x0;
+    let i = 0;
+    const mats = o.mats || [M.brick, M.brickD, BOS.roofs, M.clap1, M.cream];
+    while (x <= x1) {
+      const r = (k) => hash(i, k, salt, B.gs);
+      const w = 5 + Math.floor(r(1) * 7);
+      const tp = Math.round(top + (r(2) - 0.5) * 4);
+      const mat = mats[Math.floor(r(3) * mats.length)];
+      const xe = Math.min(x1, x + w - 1);
+      B.tower({ x0: x, x1: xe, top: tp, base: o.base, d, mat, win: { px: 2, py: 3, w: 1, h: 1, mx: 1, my: 2 }, p: 0.42 });
+      if (r(4) < 0.3 && w >= 6) {
+        const cx = Math.round((x + xe) / 2);
+        for (let k = 1; k <= 2; k++) for (let xx = cx - 2 + k; xx <= cx + 2 - k; xx++) B.set(xx, tp - k, B.c(M.shingle, xx > cx ? FR : FL, d, xx, tp - k));
+      }
+      x = xe + 1;
+      i++;
+    }
+  }
+
+  /** the river: the sky's colour, ripple lines, the city reflected, glints */
+  function river(B, x0, x1, y0, y1, mirror) {
+    const lk = B.lk;
+    const d = 0.45;
+    for (let y = y0; y <= y1; y++) {
+      const v = (y - y0) / Math.max(1, y1 - y0);
+      const base = B.c(mix(M.water, hx('#9cb8d0'), 0.3 - v * 0.25), FF, d * (1 - v * 0.5), 0, y);
+      const wob = Math.round((hash(y, 3, 77, B.gs) - 0.5) * 3);
+      for (let x = x0; x <= x1; x++) {
+        let c = base;
+        // the reflection: the column above the far shore, squashed, broken up by ripples
+        const sy = mirror - 1 - Math.round((y - y0) * 1.6);
+        const sx = x + wob;
+        if (sy > 0 && sx >= 0 && sx < W && (y - y0) % 3 !== 2) {
+          const s = B.get(sx, sy);
+          if (s) c = mix(c, s, Math.max(0, 0.55 - v * 0.6) * (lk.lit > 0 ? 1 : 0.7));
+        }
+        B.set(x, y, c);
+      }
+      // long thin ripple lines catching the sky
+      let x = x0 + Math.floor(hash(y, 0, 40, B.gs) * 24);
+      while (x < x1) {
+        const len = 3 + Math.floor(hash(x, y, 41, B.gs) * 8);
+        const c = mix(base, lk.mode === 'night' ? lk.rim : lk.refl, 0.35);
+        for (let k = 0; k < len && x + k <= x1; k++) B.set(x + k, y, c);
+        x += len + 10 + Math.floor(hash(x, y, 43, B.gs) * 24);
+      }
+    }
+    // glints that come and go on the water
+    for (let i = 0; i < 18; i++) {
+      const x = x0 + Math.floor(hash(i, 1, 46, B.gs) * (x1 - x0));
+      const y = y0 + 1 + Math.floor(hash(i, 2, 46, B.gs) * Math.max(1, y1 - y0 - 1));
+      const c = lk.lit > 0 ? mix(hx(P.amber[5]), lk.fog, 0.3) : mix(lk.glint, lk.refl, 0.3);
+      B.glints.push({ x, y, c: css(c), per: 1.8 + hash(i, 3, 46, B.gs) * 2.6, seed: 4600 + i, th: 0.62 });
     }
   }
 
   /**
-   * a residential tower of flats (neighbour tower): outer bays of paired
-   * windows, a recessed centre stack of balconies, a dark crown band
+   * the downtown and Back Bay skyline from x0, standing on the far shore at
+   * `base`; the gap kept clear for the low golden sun is x 440..464
    */
-  function flats(B, o) {
-    const d = o.d;
-    const lk = B.lk;
-    const base = lk.hz;
-    const b = B.tower({ x0: o.x0, x1: o.x1, top: o.top, d, mat: o.mat, side: { w: o.sideW, at: o.sideAt }, p: 0.32, pair: true, cool: 0.06 });
-    const sideX0 = o.sideAt === 'L' ? o.x0 - o.sideW : o.x1 + 1;
-    const sf = o.sideAt === 'L' ? FL : FR;
-    const fy0 = o.top + 8;
-    const pitch = 6;
-    // the crown: a darker metal band with a lit edge
-    B.rect(o.x0, o.top + 1, o.x1, o.top + 4, M.slate, FF, d);
-    B.rect(sideX0, o.top + 1, sideX0 + o.sideW - 1, o.top + 4, M.slate, sf, d);
-    for (let x = o.x0; x <= o.x1; x++) B.set(x, o.top + 5, B.c(o.mat, FT, d, x, o.top + 5));
-    // the balcony stack: recessed, a slab and a rail per floor
-    const cx0 = o.cx0;
-    const cx1 = o.cx1;
-    B.rect(cx0, o.top + 5, cx1, base, mix(o.mat, M.dark, 0.35), FF, d);
-    for (let x = cx0; x <= cx1; x++) B.set(x, o.top + 5, B.c(o.mat, FT, d, x, o.top + 5));
-    let fl = 0;
-    for (let y = fy0; y < base - 2; y += pitch, fl++) {
-      // outer bays: pairs of 2x3 windows
-      for (const [a0, a1] of [[o.x0 + 2, cx0 - 2], [cx1 + 2, o.x1 - 2]]) {
-        let col = 0;
-        for (let x = a0; x + 1 <= a1; x += 4, col++) B.win(b, x, y, 2, 3, FF, fl, col + (a0 > cx0 ? 10 : 0));
-      }
-      // centre: a wide balcony door behind a light slab and a dark rail
-      B.win(b, cx0 + 2, y - 1, cx1 - cx0 - 3, 4, FF, fl, 20);
-      for (let x = cx0; x <= cx1; x++) {
-        B.set(x, y + 3, B.c(M.pale, FT, d, x, y + 3));
-        B.set(x, y + 1, B.c(M.dark, FF, d * 0.8, x, y + 1));
-      }
-      for (let x = cx0; x <= cx1; x += 3) B.set(x, y + 2, B.c(M.dark, FF, d * 0.8, x, y + 2));
-      // the side face: narrow windows
-      for (let x = sideX0 + 1; x < sideX0 + o.sideW - 1; x += 2) B.win(b, x, y, 1, 3, sf, fl, 30 + x);
-    }
-    // the mechanical penthouse
-    B.rect(o.cx0 - 2, o.top - 6, o.cx1 + 2, o.top - 1, M.slate, FF, d);
-    for (let x = o.cx0 - 2; x <= o.cx1 + 2; x++) B.set(x, o.top - 6, B.c(M.slate, FT, d, x, o.top - 6));
-    if (lk.snow) B.snowCap(o.cx0 - 2, o.cx1 + 2, o.top - 6, d);
-    return b;
+  function bostonSkyline(B, base, x0) {
+    const far = { d: 0.95, mats: [M.pale, M.concrete, M.stone], wmin: 5, wmax: 10, win: { px: 2, py: 3, w: 1, h: 1, mx: 1, my: 2 }, p: 0.2 };
+    B.row(x0, W - 1, base - 9, 3, Object.assign({ salt: 17, base }, far));
+    // the Back Bay towers, farther away
+    clarendon(B, 400, base, 0.78);
+    prudential(B, 419, base, 0.8);
+    dalton(B, 466, base, 0.84);
+    millennium(B, 386, base, 0.74);
+    // the downtown cluster: back row, then front row, then the clock tower
+    fidi(B, 'fed', x0 + 2, 9, 57, base, 0.8, BOS.alu);
+    fidi(B, 'round', x0 + 26, 11, 57, base, 0.8, M.glassT);
+    fidi(B, 'box', x0 + 47, 9, 48, base, 0.8, M.glassD);
+    fidi(B, 'ofc', x0 + 12, 12, 56, base, 0.72, M.pale);
+    fidi(B, 'flare', x0 + 39, 9, 56, base, 0.72, BOS.pink);
+    customHouse(B, x0 + 31, base, 0.64);
+    // low blocks of the far shore at the right edge, under the sun gap
+    B.row(432, W - 1, base - 12, 4, { d: 0.9, mats: [M.pale, M.stone, M.concrete], wmin: 6, wmax: 10, win: { px: 2, py: 3, w: 1, h: 1, mx: 1, my: 2 }, p: 0.24, salt: 19, base });
   }
 
-  // apartment 1: the station and the residential tower on the right, the
-  // downtown towers peeking over the cinema block on the left
+  // apartment 1: the bridges and the obelisk over the cinema roof on the
+  // left; the river, the downtown cluster and the Back Bay towers on the right
   function apt1(B) {
-    const far = { d: FAR, mats: [M.pale, M.concrete, M.stone, M.brick], wmin: 6, wmax: 12, win: { px: 2, py: 3, w: 1, h: 1, mx: 1, my: 2 }, p: 0.2 };
-    B.row(0, W - 1, 172, 7, Object.assign({ salt: 11 }, far));
-    // ---- left: downtown towers over the cinema block (top y 112)
-    bostonTowers(B, 0.88, { crown: 14, crownTop: 100, mast: 34, mastTop: 98, slab: 56, slabTop: 90, sideAt: 'R' });
-    B.tower({ x0: 72, x1: 80, top: 104, d: 0.88, mat: M.stone, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24 });
-    B.tower({ x0: 108, x1: 117, top: 105, d: 0.88, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 1 }, p: 0.24 });
-    B.tower({ x0: 122, x1: 133, top: 101, d: 0.88, mat: M.concrete, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24, roof: [[125, 129, 2]] });
-    B.beacon(127, 98, 3.6, 0.55);
-    // ---- right: far towers, with a low gap at x 440..466 for the golden sun
-    B.tower({ x0: 410, x1: 419, top: 124, d: 0.9, mat: M.pale, side: { w: 2, at: 'L' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24 });
-    B.tower({ x0: 424, x1: 436, top: 112, d: 0.9, mat: M.concrete, side: { w: 2, at: 'L' }, win: { px: 2, py: 3, w: 1, h: 1 }, p: 0.24, roof: [[428, 432, 3]] });
-    B.beacon(430, 108, 3.4, 0.3);
-    B.tower({ x0: 468, x1: W - 1, top: 116, d: 0.9, mat: M.stone, side: { w: 2, at: 'L' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24 });
-    // mid blocks either side of the neighbour tower
-    const mid = { d: MID, mats: [M.brick, M.brickD, M.concrete, M.brown], wmin: 9, wmax: 15, win: { px: 3, py: 4, w: 2, h: 2, mx: 1, my: 3 }, p: 0.3 };
-    B.row(326, 356, 146, 6, Object.assign({ salt: 12 }, mid));
-    B.row(404, W - 1, 150, 8, Object.assign({ salt: 13 }, mid));
-    // ---- the neighbour tower: twenty storeys of flats, its left side in view
-    flats(B, { x0: 360, x1: 404, top: 78, d: NEAR, mat: M.concrete, sideW: 4, sideAt: 'L', cx0: 375, cx1: 389 });
-    B.beacon(382, 71, 3.8, 0.7);
+    const lk = B.lk;
+    const shore = 146;
+    lk.hz = shore + 4;
+    lk.span = 30;
+    // ---- left, above the cinema roof (y 112)
+    rowhouses(B, 0, 145, 108, 0.72, 61, { base: 112 });
+    obelisk(B, 44, 108, 34, 0.62);
+    tobin(B, { x0: 0, x1: 34, cx: 14, hw: 22, h: 14, deck: 102, d: 0.7, piers: [6, 26], pierTo: 112, top0: 0 });
+    zakim(B, { x0: 54, x1: 145, deck: 104, top: 72, d: 0.6, towers: [{ x: 72, l: 16, r: 15 }, { x: 104, l: 15, r: 13 }], under: true });
+    // ---- right: the skyline across the river
+    bostonSkyline(B, shore, 328);
+    rowhouses(B, 326, W - 1, shore - 5, 0.55, 62, { base: shore + 1 });
+    river(B, 326, W - 1, shore + 2, 197, shore + 1);
     // ---- the station on its embankment, the canopy over the platform
     station(B, { x0: 326, x1: W - 1, wall: 198, canopy: [362, W - 1], deck: 196 });
   }
@@ -787,36 +1169,29 @@
     }
   }
 
-  // apartment 2: the skyline across the river on the left, the office slab
-  // on the right, the elevated track across both
+  // apartment 2: the same view from a block away: the bridges and the
+  // obelisk on the left, the skyline on the right, the river below them and
+  // the elevated track across both
   function apt2(B) {
-    const far = { d: FAR, mats: [M.pale, M.concrete, M.stone], wmin: 6, wmax: 12, win: { px: 2, py: 3, w: 1, h: 1, mx: 1 }, p: 0.2 };
-    B.row(0, W - 1, 166, 8, Object.assign({ salt: 21 }, far));
-    bostonTowers(B, 0.9, { crown: 20, crownTop: 104, mast: 36, mastTop: 96, slab: 60, slabTop: 86, sideAt: 'R' });
-    B.tower({ x0: 4, x1: 15, top: 120, d: 0.9, mat: M.stone, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24 });
-    B.tower({ x0: 78, x1: 87, top: 110, d: 0.9, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24, roof: [[80, 84, 3]] });
-    B.tower({ x0: 92, x1: 101, top: 100, d: 0.9, mat: M.concrete, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 1 }, p: 0.24 });
-    B.rect(94, 95, 99, 99, M.concrete, FF, 0.9);
-    B.beacon(96, 94, 3.5, 0.6);
-    B.tower({ x0: 106, x1: 115, top: 118, d: 0.9, mat: M.stone, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1 }, p: 0.24 });
-    B.tower({ x0: 120, x1: 134, top: 128, d: 0.9, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 1 }, p: 0.24 });
+    const lk = B.lk;
+    const shore = 140;
+    lk.hz = shore + 4;
+    lk.span = 30;
+    // ---- left: the truss bridge, the obelisk on its hill, the white cable-stayed bridge
+    rowhouses(B, 0, 140, 135, 0.66, 63, { base: shore });
+    obelisk(B, 46, 132, 34, 0.6);
+    tobin(B, { x0: 0, x1: 36, cx: 15, hw: 24, h: 15, deck: 125, d: 0.68, piers: [8, 28], pierTo: shore, top0: 0 });
+    zakim(B, { x0: 54, x1: 138, deck: 128, top: 101, d: 0.58, towers: [{ x: 68, l: 13, r: 13 }, { x: 98, l: 13, r: 12 }], under: true });
+    river(B, 0, 140, shore + 1, 149, shore);
+    // ---- right: the skyline across the river
+    bostonSkyline(B, shore, 328);
+    rowhouses(B, 336, W - 1, shore - 5, 0.55, 64, { base: shore });
+    river(B, 336, W - 1, shore + 1, 149, shore);
     // the hills of old three-deckers beyond the track, both sides
     houses(B, 0, 140, 162, 0.6, 31);
     houses(B, 336, W - 1, 158, 0.62, 32);
-    // the lower office block and the glass office slab (right)
-    B.tower({ x0: 346, x1: 394, top: 114, d: 0.42, mat: M.pale, side: { w: 3, at: 'L' }, p: 0.4, cool: 0.3, win: { px: 2, py: 5, w: 2, h: 2, mx: 1, my: 3 }, roof: [[352, 360, 3]] });
-    const slab = { id: ++B.ids, d: 0.32, p: 0.36, cool: 0.3 };
-    B.glassWall(slab, 400, 442, 68, B.lk.hz, FF, { mat: M.glassT, mul: 3, fl: 4 });
-    B.glassWall(slab, 396, 399, 70, B.lk.hz, FL, { mat: M.glassT, mul: 2, fl: 4 });
-    for (let x = 396; x <= 442; x++) B.set(x, 67, B.c(M.slate, FT, 0.32, x, 67));
-    B.rect(410, 63, 430, 66, M.slate, FF, 0.32);
-    if (B.lk.snow) B.snowCap(396, 442, 67, 0.32);
-    B.beacon(420, 62, 3.6, 0.2);
-    // low blocks under the sun gap and a mid-rise at the right edge
-    B.tower({ x0: 444, x1: 466, top: 146, d: 0.5, mat: M.brick, side: { w: 2, at: 'L' }, win: { px: 3, py: 4, w: 2, h: 2, mx: 1, my: 3 }, p: 0.3 });
-    B.tower({ x0: 470, x1: W - 1, top: 104, d: 0.46, mat: M.concrete, side: { w: 3, at: 'L' }, win: { px: 3, py: 4, w: 2, h: 2, mx: 1, my: 3 }, p: 0.3 });
     // low near sheds under the track on the left
-    B.row(0, 136, 176, 4, { d: 0.36, mats: [M.brickD, M.brick, M.concrete], wmin: 12, wmax: 22, win: { px: 4, py: 5, w: 2, h: 2, mx: 2, my: 3 }, p: 0.3, salt: 24 });
+    B.row(0, 136, 176, 4, { d: 0.36, mats: [M.brickD, M.brick, M.concrete], wmin: 12, wmax: 22, win: { px: 4, py: 5, w: 2, h: 2, mx: 2, my: 3 }, p: 0.3, salt: 24, base: BH - 1 });
     elevated(B, { y: 150, x0: 0, x1: W - 1, piers: [18, 72, 126, 352, 408, 462] });
   }
 
@@ -831,7 +1206,7 @@
       const tp = Math.round(top + (r(2) - 0.5) * 8 + Math.sin((x + salt) / 30) * 4);
       const mat = mats[Math.floor(r(3) * mats.length)];
       const xe = Math.min(x1, x + w - 1);
-      B.tower({ x0: x, x1: xe, top: tp, d, mat, cap: false, win: { px: 3, py: 5, w: 1, h: 2, mx: 2, my: 3 }, p: 0.4 });
+      B.tower({ x0: x, x1: xe, top: tp, base: BH - 1, d, mat, cap: false, win: { px: 3, py: 5, w: 1, h: 2, mx: 2, my: 3 }, p: 0.4 });
       if (r(4) < 0.65) {
         const cx = x + (w - 1) / 2;
         for (let k = 1; k <= Math.floor(w / 2); k++)
@@ -882,7 +1257,7 @@
     const mats = [M.brick, M.stone, M.concrete, M.brown, M.pale];
     const towers = [
       [0, 12, 104], [16, 30, 94, 'tank'], [34, 46, 108, 'pyr'], [52, 63, 88, 'glass'], [68, 82, 100, 'crown'], [86, 93, 110],
-      [118, 130, 92, 'step'], [134, 148, 104, 'tank'], [152, 168, 98, 'crown'], [172, 192, 106, 'tank'],
+      [110, 120, 100], [134, 148, 104, 'tank'], [150, 164, 98, 'tank'],
       [280, 293, 96, 'step'], [296, 311, 88, 'glass'], [315, 330, 102, 'tank'], [334, 349, 92, 'pyr'], [352, 364, 108], [366, 380, 98, 'tank'],
       [383, 398, 100, 'crown'], [402, 420, 96, 'tank'], [424, 433, 106], [460, W - 1, 102, 'step'],
     ];
@@ -921,94 +1296,168 @@
       }
       if (kind === 'tank') B.waterTank(x0 + 3 + (i % 3) * 2, tp - 1, MID);
     });
-    deco(B, 104, 96);
-    glassSpire(B, 436, 458, 62);
+    chrysler(B, 128, 0.66);
+    empireState(B, 180, 0.56);
+    oneWTC(B, 444, 0.5);
   }
 
-  /** a generic stepped art-deco tower with a needle, floodlit red, white and blue on the Fourth */
-  function deco(B, cx, top) {
-    const d = 0.55;
+  /**
+   * the great art-deco tower of midtown: a pinstriped shaft, the setbacks
+   * and the mooring mast with its antenna. On the Fourth its lit top wears
+   * red, white and blue (lower tier red, the observatory white, the mast blue)
+   */
+  function empireState(B, cx, d) {
     const lk = B.lk;
-    B.tower({ x0: cx - 9, x1: cx + 9, top, d, mat: M.stone, side: { w: 2, at: 'R' }, win: { px: 2, py: 2, w: 1, h: 1, mx: 1, my: 2 }, p: 0.3 });
-    const tiers = [
-      [7, top - 6, top - 1],
-      [5, top - 12, top - 7],
-      [3, top - 17, top - 13],
-      [1, top - 21, top - 18],
-    ];
     const july = B.ed.id === 'nyc' && lk.lit > 0;
-    const flood = [hx('#4a6ad8'), hx('#f0f0f8'), hx('#e04040'), hx('#f0f0f8')];
-    tiers.forEach(([hw, y0, y1], i) => {
-      const h = y1 - y0 + 1;
+    const stone = hx('#cdbfa6');
+    const b = { id: ++B.ids, d, p: 0.34, cool: 0.08 };
+    const side = lk.sun === FL ? FL : FR;
+    const RED = hx('#ff5a52');
+    const WHT = hx('#f6f4ff');
+    const BLU = hx('#5a86ff');
+    // [half width, y0, y1, july colour]
+    const TIERS = [
+      [7, 90, 150, null],
+      [5, 80, 89, RED],
+      [4, 76, 79, WHT],
+      [3, 73, 75, WHT],
+      [2, 66, 72, BLU],
+      [1, 62, 65, BLU],
+    ];
+    for (const [hw, y0, y1, jc] of TIERS) {
       for (let y = y0; y <= y1; y++)
         for (let x = cx - hw; x <= cx + hw; x++) {
-          const face = x >= cx + hw - 1 && hw > 1 ? lk.sun : FF;
-          let c = B.c(M.stone, face, d, x, y);
-          if (july) {
-            // uplit from the setback below: brightest at the foot of each tier
-            const up = (y - y0) / Math.max(1, h - 1);
-            c = mix(c, flood[i], 0.35 + up * 0.4);
-            if (x === cx - hw) c = mix(c, B.c(M.stone, FF, d, x, y), 0.5);
-          }
-          if ((x - cx) % 2 !== 0 && hw > 1) c = mix(c, B.c(M.dark, FF, d, x, y), 0.25); // the deco piers
+          const face = x >= cx + hw - (hw > 3 ? 1 : 0) && hw > 1 ? side : x === cx - hw ? FL : FF;
+          let c = B.c(stone, y === y0 ? FT : face, d, x, y);
+          // the pinstripes: windows in vertical runs between stone piers
+          if (hw >= 4 && (x - cx) % 2 !== 0 && y > y0) c = mix(c, B.c(M.glassD, face, d, x, y), 0.55);
+          if (july && jc) {
+            const up = (y - y0) / Math.max(1, y1 - y0); // floodlit from the setback below
+            c = mix(c, jc, 0.5 + up * 0.35);
+            if (x === cx - hw) c = mix(c, B.c(stone, FL, d, x, y), 0.4);
+          } else if (lk.lit > 0 && jc) c = B.flood(c, 0.4, WHT);
           B.set(x, y, c);
         }
-      // the ledge of each setback
-      for (let x = cx - hw - 1; x <= cx + hw + 1; x++) B.set(x, y1 + 1, B.c(M.stone, FT, d, x, y1 + 1));
-    });
-    B.mast(cx, top - 32, top - 22, M.silver, d);
-    B.beacon(cx, top - 33, 3, 0.3);
+      // a ledge at each setback
+      if (y0 > 62) for (let x = cx - hw - 1; x <= cx + hw + 1; x++) if (!B.get(x, y0 - 1) || hw < 7) B.set(x, y0, B.c(stone, FT, d, x, y0));
+    }
+    // lit windows in the shaft
+    if (lk.lit > 0) B.grid(b, { px: 2, py: 2, w: 1, h: 1, mx: 1, my: 2, ox: 1 }, cx - 7, cx + 7, 90, 150, FF);
+    // the antenna
+    B.mast(cx, 48, 61, M.silver, d);
+    B.set(cx, 55, B.c(M.steel, FT, d, cx, 55));
+    if (july) {
+      for (let y = 56; y <= 61; y++) B.set(cx, y, mix(BLU, WHT, 0.3));
+      B.glows.push({ x: cx, y: 76, r: 16, color: [0.9, 0.55, 0.6], a: 0.22 });
+    }
+    B.beacon(cx, 47, 3, 0.3);
   }
 
-  /** a generic tall glass tower with a mast */
-  function glassSpire(B, x0, x1, top) {
-    const d = 0.5;
-    const b = { id: ++B.ids, d, p: 0.3, cool: 0.4 };
-    B.glassWall(b, x0, x1, top + 14, B.lk.hz, FF, { mat: M.glass, mul: 3, fl: 3 });
-    B.glassWall(b, x0 + 2, x1 - 2, top, top + 13, FF, { mat: M.glass, mul: 3, fl: 3 });
-    // the lit corner on the right
-    for (let y = top; y <= B.lk.hz; y++) {
-      const xe = y < top + 14 ? x1 - 2 : x1;
-      B.set(xe, y, B.c(M.glass, FR, d, xe, y));
-      B.set(xe - 1, y, mix(B.c(M.glass, FR, d, xe - 1, y), B.c(M.glass, FF, d, xe - 1, y), 0.5));
-    }
-    for (let x = x0 + 2; x <= x1 - 2; x++) B.set(x, top, B.c(M.silver, FT, d, x, top));
-    for (let x = x0; x <= x1; x++) B.set(x, top + 14, B.c(M.silver, FT, d, x, top + 14));
-    const cx = Math.round((x0 + x1) / 2);
-    B.rect(cx - 2, top - 3, cx + 2, top - 1, M.steel, FF, d);
-    B.mast(cx, top - 36, top - 4, M.silver, d);
-    B.mast(cx + 1, top - 20, top - 4, M.steel, d);
-    if (B.lk.lit > 0) B.glints.push({ x: cx, y: top - 37, c: css(hx('#f4f6ff')), per: 2.2, seed: 9091, th: 0.3 });
-    B.beacon(cx, top - 4, 3.1, 0.6);
+  /** the stepped crown of terraced sunburst arches and its needle spire */
+  function chrysler(B, cx, d) {
+    const lk = B.lk;
+    const steel = hx('#dde3ea');
+    const brick = hx('#c9c4bb');
+    const side = lk.sun === FL ? FL : FR;
+    const b = { id: ++B.ids, d, p: 0.3, cool: 0.1 };
+    // the shaft
+    for (let y = 96; y <= 150; y++) for (let x = cx - 4; x <= cx + 4; x++) B.set(x, y, B.c(brick, x === cx + 4 ? side : x === cx - 4 ? FL : FF, d, x, y));
+    B.grid(b, { px: 2, py: 2, w: 1, h: 1, mx: 1, my: 2 }, cx - 4, cx + 4, 96, 150, FF);
+    // the crown: terraced arches, each narrower, with triangular windows
+    const ARCH = [
+      [4, 93, 95],
+      [3, 90, 92],
+      [2, 87, 89],
+      [1, 85, 86],
+    ];
+    for (const [hw, y0, y1] of ARCH)
+      for (let y = y0; y <= y1; y++)
+        for (let x = cx - hw; x <= cx + hw; x++) {
+          if (y === y0 && (x === cx - hw || x === cx + hw) && hw > 1) continue; // the arch shoulders
+          const face = x > cx ? side : x === cx - hw ? FL : FF;
+          let c = B.c(steel, y === y0 ? FT : face, d, x, y);
+          const tri = y > y0 && (x - cx + hw) % 2 === 1;
+          if (tri) c = lk.lit > 0 ? mix(hx('#fff6e0'), lk.fog, 0.2) : mix(c, B.c(M.dark, face, d, x, y), 0.45);
+          else if (lk.lit > 0) c = B.flood(c, 0.35, CROWN);
+          B.set(x, y, c);
+        }
+    // the needle
+    B.mast(cx, 74, 84, M.silver, d);
+    if (lk.lit > 0) B.glows.push({ x: cx, y: 90, r: 9, color: [0.85, 0.88, 1], a: 0.18 });
   }
+
+  /** the tall tapered glass tower downtown: faceted triangles, parapet, the spire */
+  function oneWTC(B, cx, d) {
+    const lk = B.lk;
+    const roof = 64;
+    const ground = 150;
+    const b = { id: ++B.ids, d, p: 0.3, cool: 0.35 };
+    for (let y = roof; y <= ground; y++) {
+      const v = (y - roof) / (ground - roof);
+      const hw = Math.round(4 + 3 * v);
+      const tri = 4 * (1 - v); // the downward triangle in the middle of the face
+      const fl = Math.floor((y - roof) / 2);
+      for (let x = cx - hw; x <= cx + hw; x++) {
+        const mid = Math.abs(x - cx) <= tri;
+        const face = mid ? FF : x < cx ? FL : side3(lk);
+        let c = B.c(M.glass, face, d, x, y);
+        if (lk.mode === 'day' || lk.mode === 'golden') c = mix(c, lk.refl, mid ? 0.4 : 0.18);
+        else if (lk.mode === 'dusk') c = mix(c, lk.refl, mid ? 0.25 : 0.08);
+        else c = mix(c, [8, 10, 22], 0.1);
+        if ((y - roof) % 2 === 1) c = mix(c, [10, 12, 22], 0.1);
+        if (lk.lit > 0 && hash(b.id, fl, B.ls, 21) < 0.32 * lk.lit && (y - roof) % 2 === 0 && hash(x >> 1, fl, b.id, 5) < 0.7) c = mix(mix(OFFICE, lk.fog, 0.35), c, 0.3);
+        // the chamfered corner edges of the facets catch the light
+        if (Math.abs(Math.abs(x - cx) - tri) < 0.6) c = mix(c, lk.mode === 'night' ? lk.rim : lk.refl, lk.mode === 'night' ? 0.35 : 0.3);
+        B.set(x, y, c);
+      }
+    }
+    // the parapet and the spire with its rings
+    for (let x = cx - 4; x <= cx + 4; x++) {
+      B.set(x, roof - 1, B.c(M.silver, FT, d, x, roof - 1));
+      B.set(x, roof, B.c(M.silver, FF, d, x, roof));
+    }
+    B.rect(cx - 1, roof - 4, cx + 1, roof - 2, M.steel, FF, d);
+    B.mast(cx, roof - 30, roof - 5, M.silver, d);
+    for (const y of [roof - 10, roof - 16, roof - 22]) {
+      B.set(cx - 1, y, B.c(M.silver, FF, d, cx - 1, y));
+      B.set(cx + 1, y, B.c(M.silver, FF, d, cx + 1, y));
+    }
+    if (lk.lit > 0) {
+      const july = B.ed.id === 'nyc';
+      for (let y = roof - 30; y <= roof - 20; y++) {
+        const k = Math.floor((y - roof + 30) / 4); // red, white and blue on the Fourth
+        B.set(cx, y, july ? hx(['#ff5a52', '#f6f4ff', '#5a86ff'][Math.min(2, k)]) : mix(CROWN, lk.fog, 0.1));
+      }
+      B.glints.push({ x: cx, y: roof - 31, c: css(hx('#ffffff')), per: 2.2, seed: 9091, th: 0.3 });
+      B.glows.push({ x: cx, y: roof - 28, r: 8, color: [0.85, 0.9, 1], a: 0.2 });
+    }
+    B.beacon(cx, roof - 5, 3.1, 0.6);
+  }
+  const side3 = (lk) => (lk.sun === FR ? FR : FL);
 
   // ==================================================================
   // Los Angeles: the twin silver towers and the hazy mountains
   // ==================================================================
   function la(B) {
     const lk = B.lk;
-    // two ranges: the far one pale and lavender, the near one dry olive-brown
-    B.mountain(0, W - 1, (x) => 130 + 7 * Math.sin(x / 41 + 0.7) + 4 * Math.sin(x / 13 + 1.9) - 10 * Math.exp(-(((x - 410) / 60) ** 2)), lk.hz, M.mtn, 1, { per: 13 });
-    B.mountain(0, W - 1, (x) => 146 + 6 * Math.sin(x / 29 + 2.1) + 3 * Math.sin(x / 9 + 0.3) - 7 * Math.exp(-(((x - 350) / 40) ** 2)), lk.hz, M.mtn2, 0.8, { per: 9, tex: 0.16, texMat: M.chap });
-    // downtown, small and hazy, far on the right; one sail-topped tower
-    const dd = 0.72;
-    for (const [x0, x1, tp] of [[392, 399, 150], [402, 409, 138], [421, 428, 144], [432, 440, 152], [443, 447, 158]])
-      B.tower({ x0, x1, top: tp, d: dd, mat: M.pale, side: { w: 1, at: 'L' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1, my: 2 } });
-    const sail = { id: ++B.ids, d: dd, p: 0.3, cool: 0.2 };
-    B.glassWall(sail, 412, 419, 128, lk.hz, FF, { mat: M.glass, mul: 2, fl: 3 });
-    for (let k = 0; k < 7; k++) for (let x = 412 + k; x <= 419; x++) B.set(x, 127 - k, B.c(M.glass, k === 6 || x === 412 + k ? FT : FF, dd, x, 127 - k));
-    // the cluster on the left
-    B.tower({ x0: 4, x1: 15, top: 128, d: 0.72, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1 } });
-    B.tower({ x0: 19, x1: 29, top: 118, d: 0.7, mat: M.stone, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1 } });
+    // the far range, pale and lavender, across the whole basin
+    B.mountain(0, W - 1, (x) => 128 + 7 * Math.sin(x / 41 + 0.7) + 4 * Math.sin(x / 13 + 1.9) - 8 * Math.exp(-(((x - 300) / 60) ** 2)), lk.hz, M.mtn, 1, { per: 13 });
+    // the near hills on the right: dry chaparral slopes with a long ridge
+    const hills = (x) => 150 - 30 * Math.exp(-(((x - 410) / 58) ** 2)) - 8 * Math.exp(-(((x - 452) / 18) ** 2)) + 2.5 * Math.sin(x / 7.3) + 1.5 * Math.sin(x / 3.1 + 1);
+    B.mountain(300, W - 1, hills, lk.hz, M.chap, 0.62, { per: 8, tex: 0.22, texMat: M.mtn2 });
+    B.mountain(0, 150, (x) => 150 + 5 * Math.sin(x / 23 + 0.4) + 2 * Math.sin(x / 7), lk.hz, M.mtn2, 0.8, { per: 9, tex: 0.16, texMat: M.chap });
+    hillLetters(B, 352, hills);
+    observatory(B, 446, Math.round(hills(446)) + 1);
+    // Century City on the left: the twin triangular towers, a stepped tan tower, glass neighbours
+    stepped(B, 26, 39, 112);
+    twinSilver(B, 48, 100);
+    twinSilver(B, 66, 100);
+    rounded(B, 88, 97, 118);
     const dk = { id: ++B.ids, d: 0.66, p: 0.3, cool: 0.3 };
-    B.glassWall(dk, 33, 43, 104, lk.hz, FF, { mat: M.dark, mul: 2, fl: 3 });
-    B.glassWall(dk, 44, 45, 105, lk.hz, FR, { mat: M.dark, mul: 2, fl: 3 });
-    twinSilver(B, 50, 86);
-    twinSilver(B, 68, 88);
-    stepped(B, 88, 101, 98);
-    rounded(B, 106, 115, 92);
-    rounded(B, 119, 128, 99);
-    B.tower({ x0: 131, x1: 146, top: 122, d: 0.72, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1 } });
+    B.glassWall(dk, 102, 111, 126, lk.hz, FF, { mat: M.dark, mul: 2, fl: 3 });
+    B.glassWall(dk, 112, 113, 127, lk.hz, FR, { mat: M.dark, mul: 2, fl: 3 });
+    B.tower({ x0: 6, x1: 18, top: 134, d: 0.72, mat: M.pale, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1 } });
+    B.tower({ x0: 118, x1: 131, top: 138, d: 0.72, mat: M.cream, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1 } });
     // low sprawl peeking over the shop strips: flat roofs and street trees
     for (const [x0, x1, salt] of [[0, 160, 51], [312, W - 1, 52]]) {
       let x = x0;
@@ -1016,16 +1465,70 @@
       while (x <= x1) {
         const r = (k) => hash(i, k, salt, B.gs);
         const w = 7 + Math.floor(r(1) * 12);
-        const tp = 166 + Math.floor(r(2) * 6);
+        const tp = 162 + Math.floor(r(2) * 8);
         const mat = [M.cream, M.pale, M.stone, M.white][Math.floor(r(3) * 4)];
-        B.tower({ x0: x, x1: Math.min(x1, x + w - 1), top: tp, d: 0.62, mat, cap: true, win: { px: 3, py: 6, w: 2, h: 1, mx: 1, my: 3 } });
-        if (r(4) < 0.45) B.canopy(x + w - 2, tp - 1, [[0, 0, 3 + r(5) * 2], [3, 1, 2.6]], M.tree, 0.55, { seed: x });
+        B.tower({ x0: x, x1: Math.min(x1, x + w - 1), top: tp, d: 0.6, mat, cap: true, win: { px: 3, py: 6, w: 2, h: 1, mx: 1, my: 3 } });
+        if (r(4) < 0.5) B.canopy(x + w - 2, tp - 1, [[0, 0, 3 + r(5) * 2], [3, 1, 2.6]], M.tree, 0.52, { seed: x });
         x += w + (r(6) < 0.3 ? 2 : 0);
         i++;
       }
     }
-    // far hazed palms
-    for (const [x, h, l] of [[36, 52, 1], [146, 47, -1], [372, 46, -1], [452, 52, 1], [470, 40, 1]]) B.palm(x, 178, h, l, 0.5, { sc: 0.7 });
+    // tall slim palms down the avenues, in two depths
+    for (const [x, h, l, dd] of [[22, 58, 1, 0.42], [42, 50, -1, 0.5], [144, 54, -1, 0.42], [330, 52, 1, 0.45], [348, 44, -1, 0.52], [392, 50, 1, 0.48], [424, 40, -1, 0.55], [466, 56, 1, 0.42], [100, 42, 1, 0.55]])
+      B.palm(x, 178, h, l, dd, { sc: 0.78 });
+  }
+
+  /**
+   * the white hillside letters as a far landmark: nine blocky shapes, 2-3 px
+   * tall, set unevenly along the slope. Only their shapes are drawn, never
+   * readable letters
+   */
+  function hillLetters(B, x0, ridge) {
+    const lk = B.lk;
+    const white = mix(hx('#fbfbf6'), lk.fog, Math.min(0.5, lk.A * 0.42));
+    const shade = mix(white, B.c(M.chap, FL, 0.62, x0, 130), 0.4);
+    // each shape: [width, height, a missing corner (0 none, 1 top-right, 2 bottom-left, 3 top-left)]
+    const SH = [[2, 3, 0], [2, 3, 1], [2, 3, 0], [2, 3, 2], [2, 3, 0], [3, 2, 0], [2, 3, 3], [2, 3, 0], [2, 3, 1]];
+    let x = x0;
+    const y0 = Math.round(ridge(x0 + 14) + 12); // one line across the slope, below the crest
+    for (let i = 0; i < SH.length; i++) {
+      const [w, h, cut] = SH[i];
+      // nearly level, a gentle tilt with the hill, each one a little uneven
+      const yb = y0 - Math.round(i * 0.25) + (hash(i, 1, 5, 3) < 0.35 ? 1 : 0);
+      for (let dy = 0; dy < h; dy++)
+        for (let dx = 0; dx < w; dx++) {
+          if ((cut === 1 && dx === w - 1 && dy === 0) || (cut === 2 && dx === 0 && dy === h - 1) || (cut === 3 && dx === 0 && dy === 0)) continue;
+          B.set(x + dx, yb - h + 1 + dy + (dx === w - 1 && i % 3 === 1 ? 1 : 0), dx === w - 1 && lk.sun === FL ? shade : white);
+        }
+      // the scaffold shadow under each letter
+      B.set(x, yb + 1, B.c(M.chap, FL, 0.62, x, yb + 1));
+      x += w + 1;
+    }
+  }
+
+  /** the white observatory on its hill: a long front, a big central dome, two small domes */
+  function observatory(B, cx, base) {
+    const lk = B.lk;
+    const d = 0.58;
+    const wall = hx('#f2efe6');
+    const dome = hx('#55706a'); // weathered copper
+    const side = lk.sun === FL ? FL : FR;
+    // the terrace and the long low front
+    for (let x = cx - 9; x <= cx + 9; x++) B.set(x, base, B.c(M.pale, FT, d, x, base));
+    for (let y = base - 3; y < base; y++) for (let x = cx - 8; x <= cx + 8; x++) B.set(x, y, B.c(wall, x === cx + 8 ? side : FF, d, x, y));
+    for (let x = cx - 7; x <= cx + 7; x += 2) B.set(x, base - 2, B.c(M.dark, FF, d, x, base - 2));
+    // the drum and the central dome
+    for (let y = base - 5; y < base - 3; y++) for (let x = cx - 2; x <= cx + 2; x++) B.set(x, y, B.c(wall, x === cx + 2 ? side : FF, d, x, y));
+    const DOME = [[1, 10], [2, 9], [3, 8], [3, 7], [4, 6]]; // [half width, y offset above base]
+    for (const [hw, oy] of DOME) for (let x = cx - hw; x <= cx + hw; x++) B.set(x, base - oy, B.c(dome, x > cx ? side : x === cx - hw ? FL : FF, d, x, base - oy));
+    B.set(cx, base - 11, B.c(dome, FT, d, cx, base - 11));
+    // the two small domed towers at the ends
+    for (const ex of [cx - 7, cx + 7]) {
+      for (let y = base - 5; y < base - 3; y++) for (let x = ex - 1; x <= ex + 1; x++) B.set(x, y, B.c(wall, x === ex + 1 ? side : FF, d, x, y));
+      for (let x = ex - 1; x <= ex + 1; x++) B.set(x, base - 6, B.c(dome, x > ex ? side : FF, d, x, base - 6));
+      B.set(ex, base - 7, B.c(dome, FT, d, ex, base - 7));
+    }
+    if (lk.lit > 0) for (let x = cx - 6; x <= cx + 6; x += 3) B.set(x, base - 2, mix(hx(P.amber[5]), lk.fog, 0.2));
   }
   /** one of the twin triangular silver towers: two faces meeting at an edge, thin dark lines */
   function twinSilver(B, x0, top) {
@@ -1071,30 +1574,35 @@
   // San Diego: downtown on the left; hills, the bay, the bridge and the
   // sail-roofed hall on the right
   // ==================================================================
-  const bridgeY = (x) => 186 - 26 * Math.sin(Math.PI * Math.min(1, Math.max(0, (x - 326) / 230)));
+  // the bay bridge: a long blue girder rising from the right to its high
+  // point over the channel, then dropping behind the hotel podium
+  const bridgeY = (x) => Math.round(150 + 40 * ((x - 404) / 150) ** 2 + (x < 404 ? 18 * ((404 - x) / 80) ** 2 : 0));
   function sandiego(B) {
     const lk = B.lk;
-    // far hills across the bay (and a low line behind downtown)
-    B.mountain(318, W - 1, (x) => 170 + 3 * Math.sin(x / 23) - 9 * Math.exp(-(((x - 452) / 36) ** 2)) - 4 * Math.exp(-(((x - 372) / 30) ** 2)), lk.hz, M.hill, 1, { per: 11 });
-    B.ridge(0, 150, (x) => 176 + 3 * Math.sin(x / 19 + 1), lk.hz, M.hill, 1);
+    // the long low headland far out on the right, and a low line behind downtown
+    B.mountain(318, W - 1, (x) => 178 - 16 * Math.min(1, Math.max(0, (x - 330) / 150)) ** 0.8 + 1.5 * Math.sin(x / 9) + Math.sin(x / 4.3), lk.hz, M.hill, 1, { per: 11 });
+    B.ridge(0, 150, (x) => 172 + 3 * Math.sin(x / 19 + 1), lk.hz, M.hill, 1);
+    // the lighthouse on the crest of the headland
+    B.rect(474, 157, 475, 161, M.white, FF, 0.95);
+    B.set(474, 156, B.c(M.dark, FT, 0.95, 474, 156));
     water(B, 0, W - 1, 180, 205);
-    // downtown: generic hazy towers (flat, stepped, pyramid-topped), in two depths
+    // downtown: hazy towers (flat, stepped, pyramid-topped) in two depths
     const back = [
-      [6, 15, 132, 'flat', M.pale], [30, 39, 120, 'pyr', M.cream], [56, 64, 126, 'flat', M.glass], [84, 93, 114, 'step', M.pale], [112, 121, 128, 'flat', M.pale],
+      [6, 15, 128, 'flat', M.pale], [30, 39, 116, 'pyr', M.cream], [56, 64, 122, 'flat', M.glass], [86, 95, 110, 'step', M.pale], [112, 121, 124, 'flat', M.pale],
     ];
     const front = [
-      [0, 9, 152, 'flat', M.cream], [12, 22, 140, 'step', M.pale], [24, 31, 156, 'flat', M.glassT], [40, 50, 124, 'pyr', M.white], [52, 60, 146, 'flat', M.concrete],
-      [66, 76, 132, 'flat', M.glass], [78, 86, 150, 'pyr', M.cream], [96, 106, 136, 'step', M.pale], [108, 116, 154, 'flat', M.glassT], [120, 131, 142, 'pyr', M.white],
+      [0, 9, 146, 'flat', M.cream], [12, 22, 134, 'step', M.pale], [24, 31, 150, 'flat', M.glassT], [40, 50, 120, 'pyr', M.white], [52, 60, 140, 'flat', M.concrete],
+      [78, 86, 144, 'pyr', M.cream], [96, 106, 130, 'step', M.pale], [108, 116, 148, 'flat', M.glassT], [120, 131, 136, 'pyr', M.white],
     ];
     const tw = (list, d) => {
       for (const [x0, x1, tp, kind, mat] of list) {
         if (mat === M.glass || mat === M.glassT) {
           const b = { id: ++B.ids, d, p: 0.3, cool: 0.3 };
-          B.glassWall(b, x0, x1, tp, 198, FF, { mat, mul: 2, fl: 3 });
-          B.glassWall(b, x1 + 1, x1 + 2, tp + 1, 198, FR, { mat, mul: 2, fl: 3 });
+          B.glassWall(b, x0, x1, tp, 186, FF, { mat, mul: 2, fl: 3 });
+          B.glassWall(b, x1 + 1, x1 + 2, tp + 1, 186, FR, { mat, mul: 2, fl: 3 });
           continue;
         }
-        B.tower({ x0, x1, top: tp, base: 198, d, mat, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1, my: 3 } });
+        B.tower({ x0, x1, top: tp, base: 186, d, mat, side: { w: 2, at: 'R' }, win: { px: 2, py: 3, w: 1, h: 2, mx: 1, my: 3 } });
         const cx = (x0 + x1) / 2;
         const hw = (x1 - x0) / 2;
         if (kind === 'pyr') for (let k = 1; k <= Math.ceil(hw); k++) for (let x = Math.ceil(cx - hw + k); x <= Math.floor(cx + hw - k); x++) B.set(x, tp - k, B.c(mat, x > cx ? FR : FF, d, x, tp - k));
@@ -1105,16 +1613,103 @@
       }
     };
     tw(back, 0.84);
-    tw(front, 0.68);
+    tw(front, 0.7);
+    plazaTower(B, 64, 76, 96, 0.66);
     // the distant tower seen between the hotel towers
     B.tower({ x0: 230, x1: 239, top: 124, base: 198, d: 0.86, mat: M.pale, side: { w: 1, at: 'R' } });
-    bridge(B);
-    hall(B, 388, 476, 192);
-    // green waterfront park strips with small palms
-    for (let x = 0; x <= 140; x++) for (let y = 197; y <= BH - 1; y++) B.set(x, y, B.c(y === 197 ? M.tree : M.treeD, y === 197 ? FT : FF, 0.32, x, y));
-    for (let x = 0; x <= 140; x += 7) B.canopy(x + Math.floor(hash(x, 1, 71, B.gs) * 4), 197, [[0, 0, 2.6 + hash(x, 2, 71, B.gs) * 1.5]], M.tree, 0.32, { seed: x });
+    // the far shore under downtown, then the carrier museum ship at its pier
+    for (let x = 0; x <= 150; x++) for (let y = 186; y <= 188; y++) B.set(x, y, B.c(y === 186 ? M.pale : M.concrete, y === 186 ? FT : FF, 0.66, x, y));
+    carrier(B, 6, 197);
+    coronado(B);
+    hall(B, 396, 476, 194);
     for (let x = 332; x <= W - 1; x++) for (let y = 202; y <= BH - 1; y++) B.set(x, y, B.c(y === 202 ? M.tree : M.treeD, y === 202 ? FT : FF, 0.3, x, y));
-    for (const [x, h, l] of [[8, 16, 1], [22, 13, -1], [46, 18, 1], [64, 12, 1], [92, 15, -1], [118, 17, 1], [134, 12, -1], [344, 14, 1], [362, 11, -1], [474, 16, -1]]) B.palm(x, x < 200 ? 198 : 203, h, l, 0.4, { n: 5, sc: 0.5 });
+    for (const [x, h, l] of [[344, 14, 1], [362, 11, -1], [384, 15, 1], [474, 16, -1]]) B.palm(x, 203, h, l, 0.4, { n: 5, sc: 0.5 });
+  }
+
+  /** the tallest downtown tower: a slim shaft with a stepped, pointed crown */
+  function plazaTower(B, x0, x1, top, d) {
+    const lk = B.lk;
+    const b = { id: ++B.ids, d, p: 0.3, cool: 0.3 };
+    B.glassWall(b, x0, x1, top + 10, 186, FF, { mat: M.glassT, mul: 2, fl: 3 });
+    B.glassWall(b, x1 + 1, x1 + 2, top + 11, 186, FR, { mat: M.glassT, mul: 2, fl: 3 });
+    const cx = Math.round((x0 + x1) / 2);
+    // the crown: a stack of pointed gables, narrowing to a spike
+    for (let k = 0; k < 10; k++) {
+      const y = top + 9 - k;
+      const hw = Math.max(0, Math.round(((x1 - x0) / 2) * (1 - k / 10)) - (k % 3 === 2 ? 1 : 0));
+      for (let x = cx - hw; x <= cx + hw; x++) B.set(x, y, B.c(M.white, x > cx ? lk.sun : x === cx - hw ? FL : FF, d, x, y));
+    }
+    B.mast(cx, top - 4, top - 1, M.silver, d);
+    B.beacon(cx, top - 5, 3.3, 0.4);
+  }
+
+  /** the long blue girder bridge on its slim concrete piers */
+  function coronado(B) {
+    const d = 0.26;
+    const lk = B.lk;
+    const blue = hx('#2a62b8');
+    // twin-column piers down into the bay, tallest at the channel
+    for (let x = 338; x < W; x += 9) {
+      const y0 = bridgeY(x) + 3;
+      for (let y = y0; y <= 196; y++) {
+        B.set(x, y, B.c(M.pale, lk.sun === FL ? FL : FF, d, x, y));
+        B.set(x + 1, y, B.c(M.concrete, lk.sun === FR ? FR : FL, d, x + 1, y));
+      }
+      for (let xx = x - 1; xx <= x + 2; xx++) B.set(xx, y0, B.c(M.concrete, FT, d, xx, y0));
+    }
+    // the deck: a pale railing, the blue girder face, its shadowed underside
+    for (let x = 326; x < W; x++) {
+      const y = bridgeY(x);
+      B.set(x, y - 1, B.c(M.pale, FT, d, x, y - 1));
+      B.set(x, y, B.c(blue, FT, d, x, y));
+      B.set(x, y + 1, B.c(blue, FF, d, x, y + 1));
+      B.set(x, y + 2, B.c(mix(blue, M.dark, 0.5), FF, d, x, y + 2));
+      if (lk.lit > 0 && x % 7 === 0) B.set(x, y - 1, mix(hx(P.amber[6]), lk.fog, 0.2));
+    }
+  }
+
+  /** the old aircraft carrier moored as a museum: hull, flight deck, island, parked planes */
+  function carrier(B, x0, wl) {
+    const lk = B.lk;
+    // a darker grey than real life: the marine haze (atmosphere) veils it
+    const d = 0.08;
+    const grey = hx('#47515e');
+    const side = lk.sun === FL ? FL : FR;
+    const L = 92;
+    // the hull, its bow raking forward on the left
+    for (let y = wl - 6; y <= wl; y++) {
+      const rake = Math.max(0, Math.round((wl - 3 - y) * 0.8));
+      for (let x = x0 + 3 - rake; x <= x0 + L - (wl - y > 4 ? 0 : 1); x++) {
+        let c = B.c(grey, y === wl - 6 ? FT : FF, d, x, y);
+        if (y === wl - 1 || y === wl) c = mix(c, B.c(M.dark, FF, d, x, y), 0.45); // the waterline
+        if (y === wl - 4 && x % 3 === 0) c = mix(c, B.c(M.dark, FF, d, x, y), 0.5); // portholes and bays
+        B.set(x, y, c);
+      }
+    }
+    // the flight deck overhanging the hull, its angled end on the right
+    for (let x = x0 - 2; x <= x0 + L + 6; x++) {
+      B.set(x, wl - 8, B.c(M.concrete, FT, d, x, wl - 8));
+      B.set(x, wl - 7, B.c(mix(grey, M.dark, 0.4), FF, d, x, wl - 7));
+    }
+    // the island superstructure on the right with its mast and radar
+    const ix = x0 + 62;
+    for (let y = wl - 16; y < wl - 8; y++) for (let x = ix; x <= ix + 7; x++) {
+      let c = B.c(grey, x === ix + 7 ? side : FF, d, x, y);
+      if (y === wl - 13 && x > ix && x < ix + 7) c = B.c(M.glassD, FF, d, x, y); // the bridge windows
+      B.set(x, y, c);
+    }
+    B.rect(ix + 2, wl - 19, ix + 5, wl - 17, grey, FF, d);
+    B.mast(ix + 3, wl - 27, wl - 20, M.steel, d);
+    for (let x = ix + 1; x <= ix + 5; x++) B.set(x, wl - 24, B.c(M.steel, FT, d, x, wl - 24));
+    // a few parked planes on deck: little swept shapes with a tail fin
+    for (const px of [x0 + 6, x0 + 16, x0 + 26, x0 + 38, x0 + 50, x0 + 76, x0 + 86]) {
+      const c = B.c(hx('#3e4652'), FF, d, px, wl - 9);
+      for (let x = px; x <= px + 4; x++) B.set(x, wl - 9, c);
+      B.set(px + 1, wl - 10, c);
+      B.set(px + 4, wl - 10, c);
+      B.set(px + 4, wl - 11, c);
+    }
+    if (lk.lit > 0) for (let x = x0 + 8; x < x0 + L; x += 9) B.set(x, wl - 4, mix(hx(P.amber[5]), lk.fog, 0.2));
   }
   /** calm bay water: the sky in it, long thin ripple lines, glints */
   function water(B, x0, x1, y0, y1) {
@@ -1133,24 +1728,6 @@
       }
     }
     B.waterY = [y0, y1];
-  }
-  function bridge(B) {
-    const d = 0.55;
-    const lk = B.lk;
-    // slim paired piers down into the bay
-    for (let x = 340; x < W; x += 14) {
-      const y0 = Math.round(bridgeY(x)) + 2;
-      for (let y = y0; y <= 200; y++) {
-        B.set(x, y, B.c(M.pale, lk.sun === FL ? FL : FF, d, x, y));
-        B.set(x + 1, y, B.c(M.concrete, lk.sun === FR ? FR : FL, d, x + 1, y));
-      }
-    }
-    for (let x = 326; x < W; x++) {
-      const y = Math.round(bridgeY(x));
-      B.set(x, y - 1, B.c(M.bridge, FT, d, x, y - 1));
-      B.set(x, y, B.c(M.bridge, FF, d, x, y));
-      B.set(x, y + 1, B.c(mix(M.bridge, M.dark, 0.45), FF, d, x, y + 1));
-    }
   }
   /** a low white hall with a row of white tent-like sail peaks */
   function hall(B, x0, x1, top) {
@@ -1417,6 +1994,7 @@
       tw: B.tw,
       beacons: B.beacons,
       glints: B.glints,
+      glows: B.glows,
       top: B.top,
       lit: B.lk.lit,
       train: ed.place === 'apt1' ? bakeTrain(B, 3) : ed.place === 'apt2' ? bakeTrain(B, 4) : null,
@@ -1508,6 +2086,10 @@
       const b = a.beacons[i];
       const ph = T.phase(t, b.per, b.off);
       if (ph < 0.3) g.px(b.x, b.y, ph < 0.2 ? P.red[6] : P.red[4]);
+    }
+    for (let i = 0; i < a.glows.length; i++) {
+      const q = a.glows[i];
+      HD.glow(g, q.x, q.y, q.r, q.color, q.a * (0.85 + 0.15 * T.wave(t, 6, i * 0.37)));
     }
     const bay = a.bay;
     if (bay) {

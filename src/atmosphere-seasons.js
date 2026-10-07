@@ -112,7 +112,8 @@
         return word(r, g, bl);
       },
     );
-    return { y0: o.y0, y1: o.y1, veil, alpha: 1 };
+    // composite only from where the veil starts
+    return { y0: Math.max(o.y0, Math.floor(o.top)), y1: o.y1, veil, alpha: 1 };
   }
 
   /** drifting banks of haze along a horizon line (tonal, scrolled) */
@@ -175,7 +176,7 @@
   // faint drifting haze after a flurry and clears in the lulls. A burst
   // flashing nearby lights the lingering smoke in its own colour.
   // ---------------------------------------------------------------------
-  const FW_SMOKE = ['#151934', '#1b203e', '#232948', '#2c3254', '#363c60'];
+  const FW_SMOKE = ['#121530', '#161a37', '#1c2040', '#232848', '#2b3052'];
   function burstSmoke(o) {
     const at = A();
     const LF = HD.LIGHT.firework;
@@ -214,6 +215,7 @@
     };
     const LIFE = o.life || 10;
     const WIND = o.wind || 1.3;
+    const moon = HD.sky && HD.sky.moon ? HD.sky.moon() : null;
     const SINK = o.sink || 0.35;
     const TAU2 = Math.PI * 2;
     return {
@@ -239,19 +241,23 @@
           const life = far ? LIFE * 0.7 : LIFE;
           const a = d / life;
           if (a >= 1) continue;
-          const K = far ? 3 : 5;
-          const wk = (far ? 0.6 : 0.95) * sm(0, 0.16, a) * Math.pow(1 - a, 1.4);
+          const K = far ? 2 : 4;
+          // the smoke shows as the stars fade (they last ~3 s), then thins out
+          const wk = (far ? 0.55 : 0.8) * sm(0.1, 0.32, a) * Math.pow(1 - a, 1.3);
           if (wk <= 0.02) continue;
           for (let k = 0; k < K; k++) {
             const h1 = HD.hash(sh.seed, k, 71);
             const h2 = HD.hash(sh.seed, k, 72);
             const h3 = HD.hash(sh.seed, k, 73);
             const ang = TAU2 * (k / K + 0.3 * h1);
-            const dist = sh.R * (0.22 + 0.3 * h2);
-            const px = sh.bx + Math.cos(ang) * dist + WIND * d;
-            const py = sh.by + Math.sin(ang) * dist * 0.7 + SINK * d + sh.R * 0.12;
+            const dist = sh.R * (0.25 + 0.35 * h2);
+            // puffs drift at slightly different speeds, so a cloud stretches out
+            const px = sh.bx + Math.cos(ang) * dist + WIND * d * (0.75 + 0.5 * h3);
+            const py = sh.by + Math.sin(ang) * dist * 0.5 + SINK * d + sh.R * 0.12;
             const R = sh.R * (0.42 + 0.38 * Math.sqrt(a)) * (0.8 + 0.4 * h3);
-            const w = wk * at.keepTitle(px, py, R * 0.5);
+            let w = wk * at.keepTitle(px, py, R * 0.5);
+            // never drift over the moon
+            if (moon) w *= sm(moon.r + 2, moon.r + 2 + R, Math.hypot(px - moon.x, py - moon.y));
             if (w > 0.02) at.splat(px, py, R, w, a);
           }
         }
@@ -304,24 +310,24 @@
       {
         n: 46,
         life: 10,
-        rise: 66,
+        rise: 54,
         riseR: 12,
         riseP: 1.2,
-        wind: 2.4,
+        wind: 3.2,
         driftP: 1.7,
         gust: 12,
         gustP: 13,
-        curl: 3,
+        curl: 3.6,
         curlF: 1.3,
         curlA: 0.7,
         curlR: 0.25,
         jit: 3,
         rad0: 1.5,
-        radK: 7,
+        radK: 8,
         radP: 0.9,
         radJ: 0.5,
-        fadeIn: 0.02,
-        fadeP: 1.4,
+        fadeIn: 0.06,
+        fadeP: 1.6,
         th: 0.5,
         rim: 0.45,
         bands: [2.4],
@@ -329,7 +335,7 @@
         lx: 1,
         ly: -1,
         rimK: 0.7,
-        cap: { dx: 0.35, dy: -0.3, r: 0.6, hi: 0.34, lo: 0.06 },
+        cap: { dx: 0.35, dy: -0.3, r: 0.6, hi: 0.28, lo: 0.06 },
         ramp: rampOf(cols),
         lb: 1,
       },
@@ -344,11 +350,11 @@
   function ventSteam(cols, o) {
     return Object.assign(
       {
-        n: 18,
+        n: 16,
         life: 8,
         rise: 40,
         riseR: 10,
-        riseP: 1.8,
+        riseP: 1.5,
         wind: 3.8,
         driftP: 1.9,
         gust: 9,
@@ -356,13 +362,13 @@
         curl: 1.6,
         curlF: 1.1,
         jit: 8,
-        rad0: 3,
-        radK: 9.5,
+        rad0: 4,
+        radK: 8.5,
         radP: 0.6,
         radJ: 0.75,
         fadeIn: 0.06,
         fadeP: 1.1,
-        pulse: 0.2,
+        pulse: 0.12,
         pulseP: 6,
         wK: 1,
         th: 0.55,
@@ -384,35 +390,36 @@
   function manholeSteam(cols, o) {
     return Object.assign(
       {
-        n: 22,
-        life: 7,
-        rise: 44,
+        n: 26,
+        life: 6,
+        rise: 40,
         riseR: 10,
-        riseP: 1.35,
+        riseP: 1.4,
         wind: 1.6,
-        driftP: 1.7,
+        driftP: 1.6,
         gust: 8,
         gustP: 9,
-        curl: 2.4,
-        curlF: 1.4,
+        curl: 2.6,
+        curlF: 1.5,
         curlA: 0.8,
-        jit: 5,
+        jit: 6,
         rad0: 3,
-        radK: 7,
-        radP: 0.75,
+        radK: 9,
+        radP: 0.8,
         radJ: 0.6,
-        fadeIn: 0.08,
-        fadeP: 1.3,
+        fadeIn: 0.06,
+        fadeP: 1.7,
         pulse: 0.5,
         pulseP: 5,
-        th: 0.5,
-        rim: 0.45,
-        bands: [2.2],
-        ages: [0.42, 0.7],
+        wK: 0.9,
+        th: 0.55,
+        rim: 0.6,
+        bands: [2.4],
+        ages: [0.3, 0.6],
         lx: 0,
         ly: -1,
         rimK: 0.7,
-        cap: { dx: -0.1, dy: -0.4, r: 0.6, hi: 0.34, lo: 0.06 },
+        cap: { dx: -0.1, dy: -0.4, r: 0.6, hi: 0.4, lo: 0.06 },
         ramp: rampOf(cols),
         lb: 1.4,
       },
@@ -458,11 +465,12 @@
     const fp = pl.firepit;
     // the fire module publishes its nominal flame tip (HD.firepitTop)
     const top = (HD.firepitTop && HD.firepitTop()) || fp.base - 19;
-    return { x: fp.x, y: top - 1, seed: seed || 433, w: 2 };
+    // a few px above the nominal tip, so the flicker's tall tongues stay clear
+    return { x: fp.x, y: top - 5, seed: seed || 433, w: 2 };
   }
 
-  /** the soho manhole (street draws the cover; the brief puts the steam at x 318-332) */
-  const MANHOLE = { x: 325, y: 251 };
+  /** fallback for the soho manhole when the street has not registered place.manhole */
+  const MANHOLE = { x: 325, y: 249 };
 
   function nightVignette(k) {
     return A().bakeVignette('#04050b', k);
@@ -531,7 +539,11 @@
     R.back = [nightHaze({ seed: ed.season === 'summer' ? 71 : 73 })];
     // a thin cool mist on the street, warmed under the lamps
     R.low = [ground({ y0: 224, h: 26, c: 236, up: 3, down: 6, seed: 77, gain: 0.6, cols: ['#222a48', '#2c3656'], alpha: 0.32, ly: 232, lo: 0.45, k: 1 })];
-    if (pl.id === 'soho') R.plumes = [{ style: manholeSteam(STEAM_SOHO), emitters: [{ x: MANHOLE.x, y: MANHOLE.y, w: 9, seed: 611 }] }];
+    if (pl.id === 'soho') {
+      // the street registers the cover (place.manhole); steam breathes out of it
+      const m = pl.manhole || MANHOLE;
+      R.plumes = [{ style: manholeSteam(STEAM_SOHO), emitters: [{ x: m.x, y: m.y - 1, w: 8, seed: 611 }], alpha: 0.75 }];
+    }
     if (ed.fireworks > 0 || ed.tagSet.has('goal-fireworks')) R.back.push(burstSmoke({}));
     R.vignette = nightVignette(0.5);
     return R;
@@ -548,15 +560,15 @@
     if (pl.id === 'herndon') {
       // mist on the lawn, kept off the birthday party; and over the street
       R.low = [
-        ground({ y0: 204, h: 32, c: 222, up: 3.5, down: 5, seed: 87, gain: 0.85, cols: ['#4e4a74', '#5e5884'], alpha: 0.42, ly: 220, holes: [{ x: 112, y: 214, rx: 46, ry: 22 }] }),
-        ground({ y0: 246, h: 24, c: 258, up: 3, down: 6, seed: 89, gain: 0.7, cols: ['#3e3c62', '#4a4870'], alpha: 0.34, ly: 256, lo: 0.4 }),
+        ground({ y0: 204, h: 32, c: 222, up: 3.5, down: 5, seed: 87, gain: 0.95, cols: ['#55507c', '#665f8c'], alpha: 0.55, ly: 220, holes: [{ x: 112, y: 214, rx: 46, ry: 22 }] }),
+        ground({ y0: 246, h: 24, c: 258, up: 3, down: 6, seed: 89, gain: 0.85, cols: ['#45436a', '#524f78'], alpha: 0.45, ly: 256, lo: 0.4 }),
       ];
     } else {
       const holes = [];
       if (ed.fire === 'firepit' && pl.firepit) holes.push({ x: pl.firepit.x, y: pl.firepit.base - 6, rx: 22, ry: 14 });
       R.low = [
-        ground({ y0: 206, h: 24, c: 220, up: 3, down: 4, seed: 91, gain: 0.7, cols: ['#4a4670', '#5a547e'], alpha: 0.36, ly: 216, holes }),
-        ground({ y0: 228, h: 30, c: 242, up: 4, down: 7, seed: 93, gain: 0.75, cols: ['#3a3860', '#46446c'], alpha: 0.36, ly: 240, lo: 0.35 }),
+        ground({ y0: 206, h: 24, c: 220, up: 3, down: 4, seed: 91, gain: 0.85, cols: ['#524d78', '#625b86'], alpha: 0.5, ly: 216, holes }),
+        ground({ y0: 228, h: 30, c: 242, up: 4, down: 7, seed: 93, gain: 0.85, cols: ['#43406a', '#504c78'], alpha: 0.48, ly: 240, lo: 0.35 }),
       ];
     }
     if (ed.fire === 'firepit' && pl.firepit) R.plumes = [{ style: pitSmoke(SMOKE_DUSK, { lx: -1, cap: { dx: -0.35, dy: -0.3, r: 0.6, hi: 0.34, lo: 0.06 } }), emitters: [pitEmitter(pl)] }];
@@ -642,8 +654,8 @@
       ];
       // low sea mist drifting over the marina water
       R.low = [
-        ground({ y0: 230, h: 22, c: 240, up: 3, down: 4, seed: 141, gain: 0.7, lit: false, cols: ['#e8f0f6', '#f6f9fb'], alpha: 0.32, k: 2, lo: 0.35 }),
-        ground({ y0: 250, h: 20, c: 262, up: 3, down: 5, seed: 147, gain: 0.6, lit: false, cols: ['#e0eaf2', '#f0f5f8'], alpha: 0.22, k: 3, lo: 0.45, sub: 0.3 }),
+        ground({ y0: 230, h: 22, c: 240, up: 3, down: 4, seed: 141, gain: 0.7, lit: false, cols: ['#e8f0f6', '#f6f9fb'], alpha: 0.45, k: 2, lo: 0.35 }),
+        ground({ y0: 250, h: 20, c: 262, up: 3, down: 5, seed: 147, gain: 0.6, lit: false, cols: ['#e0eaf2', '#f0f5f8'], alpha: 0.3, k: 3, lo: 0.45, sub: 0.3 }),
       ];
       return R;
     }

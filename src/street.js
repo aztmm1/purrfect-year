@@ -67,6 +67,14 @@
     return h;
   }
 
+  /** fast per-frame pseudo-random lookup in [0,1) (a fixed table, seeded once) */
+  const RT = new Float32Array(4096);
+  {
+    const rng = HD.rng(90210);
+    for (let i = 0; i < RT.length; i++) RT[i] = rng();
+  }
+  const fh = (a, b, c) => RT[(Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) & 4095];
+
   /** smooth 2D value noise in [0,1] (bake time only) */
   function vnoise(x, y, sx, sy, seed) {
     const gx = x / sx;
@@ -110,6 +118,7 @@
     leafFicus: ['#122416', '#1c381e', '#294e28', '#3a6834', '#548440'],
     autumnOrange: ['#5e2412', '#9a3e1a', '#c8601e', '#e4922c', '#f4c04c'],
     autumnGold: ['#6a4612', '#a4701a', '#d09c26', '#e8c044', '#f8dc72'],
+    autumnRed: ['#4e1612', '#86261a', '#b43c1e', '#d8622a', '#ee9440'],
     blossom: ['#7a3e58', '#b46a8a', '#dc98b2', '#f2c4d4', '#fde6ee'],
     blossomWhite: ['#8a7a86', '#c0b0bc', '#e2d6de', '#f4ecf0', '#ffffff'],
     palmFrond: ['#24401f', '#365c2a', '#4e7a36', '#6c9a44', '#90b858'],
@@ -281,8 +290,9 @@
       const flush = (xa, xb, ci) => {
         if (xb < xa || hh < 1) return;
         const tone = o.tones[(hash(o.seed, r, ci, 3) * o.tones.length) | 0];
-        g.rect(xa, ya, xb - xa + 1, hh, c(tone, k * (o.toneK ? 1 + (hash(o.seed, r, ci, 4) - 0.5) * o.toneK : 1)));
-        if ((o.hi || o.hiK) && hh >= 2) g.rect(xa, ya, xb - xa + 1, 1, c(tone, k * hiK));
+        const rk = k * (o.rowK ? o.rowK[r] : 1);
+        g.rect(xa, ya, xb - xa + 1, hh, c(tone, rk * (o.toneK ? 1 + (hash(o.seed, r, ci, 4) - 0.5) * o.toneK : 1)));
+        if ((o.hi || o.hiK) && hh >= 2) g.rect(xa, ya, xb - xa + 1, 1, c(tone, rk * hiK));
         if (o.lo && hh >= 3) g.rect(xa, y + rh - 1, xb - xa + 1, 1, c(tone, k * 0.92));
       };
       for (let x = o.x0 + 1; x <= o.x1 + 1; x++) {
@@ -411,12 +421,14 @@
         const fine = vnoise(x, y, 4, 2, seed + 1);
         const path = o.path !== undefined ? Math.exp(-Math.pow((fy - o.path) / 0.16, 2)) : 0;
         const edge = o.edgeBoost ? Math.max(0, 1 - fy * 2.6) * 0.45 + Math.max(0, fy * 2.6 - 1.6) * 0.45 : 0;
-        const cover = amount * 1.15 + edge - path * 0.5 + (big - 0.5) * 0.7 + (fine - 0.5) * 0.25 - 0.18;
+        const fk = o.smooth ? 0.08 : 0.25;
+        const cover = amount * 1.15 + edge - path * (amount >= 0.95 ? 0.22 : 0.5) + (big - 0.5) * 0.7 + (fine - 0.5) * fk - 0.18;
         const th = 0.5 + (HD.bayer(x, y) - 0.5) * 0.22;
         if (cover < th) continue;
         // shading: crests catch the light, hollows and the path stay blue
-        const v = big * 0.7 + fine * 0.3 - path * 0.35 + (cover - th) * 0.4 + (HD.bayer(x + 3, y) - 0.5) * 0.12;
-        g.px(x, y, s[v < 0.3 ? 0 : v < 0.52 ? 1 : v < 0.8 ? 2 : 3]);
+        const v = o.smooth ? 0.38 + big * 0.35 + (HD.bayer(x + 3, y) - 0.5) * 0.08 : big * 0.7 + fine * 0.3 - path * 0.35 + (cover - th) * 0.4 + (HD.bayer(x + 3, y) - 0.5) * 0.12;
+        const ti = v < 0.3 ? 0 : v < 0.52 ? 1 : v < 0.8 ? 2 : 3;
+        g.px(x, y, ti - (o.dim || 0) < 0 ? X.c('#8a96b4') : s[ti - (o.dim || 0)]);
       }
     }
   }
@@ -464,11 +476,24 @@
     const rng = HD.rng(seed);
     for (const z of zones) {
       const n = R(z.n * amt);
+      // most leaves gather in little drifts, a few lie alone
+      const drifts = z.drifts || 0;
+      const centres = [];
+      for (let i = 0; i < drifts; i++) centres.push([z.x0 + rng() * (z.x1 - z.x0), z.y0 + rng() * (z.y1 - z.y0)]);
       for (let i = 0; i < n; i++) {
         let x;
-        if (z.cx !== undefined) x = z.cx + (rng() + rng() + rng() - 1.5) * z.spread;
-        else x = z.x0 + rng() * (z.x1 - z.x0);
-        const y = z.y0 + Math.pow(rng(), z.pow || 1) * (z.y1 - z.y0);
+        let y;
+        if (z.cx !== undefined) {
+          x = z.cx + (rng() + rng() + rng() - 1.5) * z.spread;
+          y = z.y0 + Math.pow(rng(), z.pow || 1) * (z.y1 - z.y0);
+        } else if (drifts && rng() < 0.75) {
+          const ce = centres[(rng() * drifts) | 0];
+          x = ce[0] + (rng() + rng() - 1) * 7;
+          y = Math.max(z.y0, Math.min(z.y1, ce[1] + (rng() + rng() - 1) * 1.6));
+        } else {
+          x = z.x0 + rng() * (z.x1 - z.x0);
+          y = z.y0 + Math.pow(rng(), z.pow || 1) * (z.y1 - z.y0);
+        }
         leafPx(g, X, R(x), R(y), rng(), k);
       }
     }
@@ -510,12 +535,12 @@
     const clay = ['#9a6250', '#a86e58', '#8e5a4a', '#b07862', '#9e6854'];
     paverBand(g, c, { x0: 0, x1: 329, y0: 206, rows, w0: 6, w1: 9, tones: clay, joint: '#6a4638', seed: X.seed + 1, hi: true, wetK: wk });
     // the plaza: big pale granite slabs with a dark border
-    paverBand(g, c, { x0: 331, x1: 440, y0: 206, rows: [4, 7, 9], w0: 15, w1: 19, tones: ['#a8a296', '#b0aa9e', '#a29c90'], joint: '#86817a', seed: X.seed + 2, bond: 0.5, hiK: 1.05, toneK: 0.06, wetK: wk });
+    paverBand(g, c, { x0: 331, x1: 440, y0: 206, rows: [4, 7, 9], w0: 15, w1: 19, tones: ['#a8a296', '#b0aa9e', '#a29c90'], joint: '#86817a', seed: X.seed + 2, bond: 0.5, hiK: 1.05, toneK: 0.06, rowK: [0.86, 0.95, 1], wetK: wk });
     g.rect(330, 206, 1, 20, c('#5a564e', wk));
     g.rect(441, 206, 1, 20, c('#5a564e', wk));
     paverBand(g, c, { x0: 442, x1: 479, y0: 206, rows, w0: 6, w1: 9, tones: clay, joint: '#6a4638', seed: X.seed + 3, hi: true, wetK: wk });
     for (const t of X.cfg.trees) treeGrate(g, X, t.x, t.base);
-    plazaBed(g, X, 344, 414, 203);
+    plazaBed(g, X, 333, 438, 203);
     footShadow(g, X, 0, W - 1, 206);
     curb(g, c, X, 226, 0, W - 1, '#b8b4ac', '#7a7672', 26);
     g.rect(0, 229, W, 2, c('#8a8680', wk));
@@ -657,12 +682,12 @@
   function groundWeather(g, X, o) {
     const c = X.c;
     const zones = [
-      { x0: 0, x1: W - 1, y0: 207, y1: 213, n: 90, pow: 1.6 },
-      { x0: 0, x1: W - 1, y0: 214, y1: 225, n: 70 },
-      { x0: 0, x1: W - 1, y0: o.road[0] - 2, y1: o.road[0] + 2, n: 120, pow: 0.7 },
-      { x0: 0, x1: W - 1, y0: o.road[0] + 3, y1: o.road[1], n: 30 },
+      { x0: 0, x1: W - 1, y0: 207, y1: 210, n: 110, pow: 1.4, drifts: 14 },
+      { x0: 0, x1: W - 1, y0: 211, y1: 225, n: 50, drifts: 6 },
+      { x0: 0, x1: W - 1, y0: o.road[0] - 1, y1: o.road[0] + 1, n: 150, pow: 0.7, drifts: 16 },
+      { x0: 0, x1: W - 1, y0: o.road[0] + 3, y1: o.road[1], n: 10 },
     ];
-    for (const t of X.cfg.trees) zones.push({ cx: t.x, spread: 16, y0: t.base - 6, y1: t.base + 8, n: 70 });
+    for (const t of X.cfg.trees) zones.push({ cx: t.x, spread: 18, y0: t.base - 5, y1: t.base + 7, n: 80 });
     leafLitter(g, X, zones, X.seed + 900);
     if (X.snow > 0) {
       if (X.snow >= 0.6) {
@@ -671,7 +696,7 @@
         g.hline(0, W - 1, 206, SNOW_N[0]);
         snowBank(g, X, 0, W - 1, 219, 230, X.seed + 32);
         // the road: packed snow with slushy wheel tracks
-        snowCover(g, X, 0, W - 1, o.road[0] + 1, o.road[1], 1.0, X.seed + 33);
+        snowCover(g, X, 0, W - 1, o.road[0] + 1, o.road[1], 1.0, X.seed + 33, { dim: 1, smooth: true });
         for (const wtr of o.wheel)
           for (let x = 0; x < W; x++) {
             const a0 = wtr[0] + R(vnoise(x, 0, 11, 1, X.seed + wtr[0]) * 1.6 - 0.8);
@@ -691,12 +716,15 @@
 
   function crosswalk(g, c, X, x0, x1, y0, y1, seed) {
     // continental bars run along the traffic; they stack across the road
-    let y = y0 + 1;
+    let y = y0 + 2;
     let i = 0;
     while (y < y1 - 1) {
-      const bh = 2 + (i > 3 ? 1 : 0);
-      paint(g, c, X, x0, x1, y, bh, '#e2dfd6', 0.08, seed + i);
-      y += bh + 2 + (i > 5 ? 1 : 0);
+      const f = (y - y0) / (y1 - y0);
+      const bh = f < 0.4 ? 2 : 3;
+      // the bars widen a touch towards the viewer
+      const grow = R(f * 3);
+      paint(g, c, X, x0 - grow, x1 + grow, y, Math.min(bh, y1 - y), '#e2dfd6', 0.03, seed + i);
+      y += bh + (f < 0.4 ? 2 : 3);
       i++;
     }
   }
@@ -748,33 +776,43 @@
       for (let x = x0 + 1 + ((yy >> 1) & 1); x < x1; x += 2) g.px(x, yy, c(hash(x, yy, 3, 1) < 0.2 ? '#6a6a88' : '#8a90a8', k));
   }
 
+  /** Belgian-block setts: rows of worn granite stones, fanning out in perspective */
   function cobbles(g, X, y0, y1) {
     const c = X.c;
     const k = X.wet ? 0.6 : 1;
-    const tones = ['#6c6862', '#78726a', '#625e58', '#86807a', '#706a60', '#7c7064'];
+    const tones = ['#76726a', '#827c72', '#6c6862', '#8c867c', '#7a7268', '#867a6e'];
+    const joint = c('#2e2c2a', k);
     let y = y0;
     let r = 0;
     while (y <= y1) {
       const f = (y - y0) / (y1 - y0);
-      const rh = f < 0.25 ? 2 : f < 0.6 ? 3 : 4;
-      const sw = f < 0.25 ? 5 : f < 0.6 ? 6 : 7;
-      g.rect(0, y, W, 1, c('#34322e', k));
-      let x = -R(hash(X.seed, r, 1, 1) * sw);
+      const rh = Math.min(y1 - y + 1, f < 0.2 ? 2 : f < 0.55 ? 3 : 4);
+      const sw = f < 0.2 ? 5 : f < 0.55 ? 6 : 7;
+      const sc = 1 + 0.006 * (y - y0 + rh * 0.5);
+      g.rect(0, y, W, 1, joint);
+      // stone boundaries in ground space
+      let edge = -hash(X.seed, r, 1, 1) * sw;
       let i = 0;
-      while (x < W) {
-        const w = sw - 1 + R(hash(X.seed, r, i, 2) * 2);
-        g.vline(x, y, y + rh - 1, c('#34322e', k));
-        const tone = tones[(hash(X.seed, r, i, 3) * tones.length) | 0];
-        const xa = x + 1;
-        const xb = x + w - 1;
-        if (xb >= xa) {
-          g.rect(xa, y + 1, xb - xa + 1, rh - 1, c(tone, k));
-          g.hline(xa + (rh > 2 ? 1 : 0), xb - 1, y + 1, c(tone, k * 1.18));
-          if (rh > 3) g.hline(xa, xb, y + rh - 1, c(tone, k * 0.82));
-        }
-        x += w;
+      let next = edge + sw - 1 + hash(X.seed, r, 0, 2) * 2.4;
+      let start = 0;
+      const stone = (xa, xb, si) => {
+        if (xb < xa || rh < 2) return;
+        const tone = tones[(hash(X.seed, r, si, 3) * tones.length) | 0];
+        g.rect(xa, y + 1, xb - xa + 1, rh - 1, c(tone, k));
+        // a worn, rounded crown: lit top-left, darker foot
+        g.hline(xa, Math.min(xb, xa + Math.max(1, (xb - xa) >> 1)), y + 1, c(tone, k * 1.22));
+        if (rh > 2) g.hline(xa + 1, xb, y + rh - 1, c(tone, k * 0.8));
+      };
+      for (let x = 0; x <= W; x++) {
+        const u = 240 + (x - 240) / sc;
+        if (u < next && x < W) continue;
+        stone(start, x - 1, i);
+        if (x < W) g.vline(x, y + 1, y + rh - 1, joint);
+        start = x + 1;
         i++;
+        next += sw - 1 + hash(X.seed, r, i, 2) * 2.4;
       }
+      void edge;
       y += rh;
       r++;
     }
@@ -828,25 +866,42 @@
     for (let x = 0; x < W; x++) if (HD.bayer(x, 235) < 0.5) g.px(x, 235, c('#2a5a7c'));
   }
 
+  const DOCKS = [
+    [0, 150],
+    [324, 479],
+  ];
+  /** dock planks and pilings (kept out of the water's reflections and waves) */
+  function isDock(x, y) {
+    if (y < 249 || y > 263) return false;
+    for (const [x0, x1] of DOCKS) if (x >= x0 && x <= x1) return y >= 256 || (x - x0 - 9) % 29 < 3;
+    return false;
+  }
   function docks(g, X) {
     const c = X.c;
-    for (const [x0, x1] of [
-      [0, 152],
-      [322, 479],
-    ]) {
-      for (let x = x0 + 6; x <= x1 - 2; x += 26) {
-        g.rect(x, 249, 3, 9, c('#6a5a46'));
-        g.vline(x + 2, 249, 257, c('#8a7860'));
-        g.hline(x, x + 2, 249, c('#a89478'));
-        for (let y = 263; y < 270; y += 2) g.px(x + 1, y, c('#2a5070'));
-      }
-      g.rect(x0, 258, x1 - x0 + 1, 2, c('#b8a888'));
-      for (let x = x0; x <= x1; x++) if (hash(x, 3, 5, 7) < 0.3) g.px(x, 258, c('#ccbc9c'));
-      for (let x = x0 + 3; x <= x1; x += 7) g.px(x, 259, c('#8e7e62'));
+    for (const [x0, x1] of DOCKS) {
+      // the deck seen from above: weathered planks across the walkway
+      for (let y = 256; y <= 259; y++)
+        for (let x = x0; x <= x1; x++) {
+          const plank = Math.floor((x - x0 + (y > 257 ? 1 : 0)) / 3);
+          const seam = (x - x0 + (y > 257 ? 1 : 0)) % 3 === 0;
+          const tone = ['#c4b494', '#b8a888', '#ccbc9c', '#b0a080'][(hash(x0, plank, 1, 1) * 4) | 0];
+          g.px(x, y, c(seam ? '#8e7e62' : y === 256 ? mixA(tone, '#ffffff', 0.15) : tone));
+        }
+      // the fascia with a white rubbing strip, then the shadow on the water
       g.rect(x0, 260, x1 - x0 + 1, 2, c('#6a5c48'));
-      g.hline(x0, x1, 262, c('#3a4a52'));
-      for (let x = x0 + 2; x <= x1 - 4; x += 13) g.rect(x, 261, 4, 1, c('#d8d8d0'));
-      for (let x = x0 + 12; x <= x1 - 4; x += 26) g.hline(x, x + 2, 257, c('#4a4c50'));
+      for (let x = x0 + 1; x <= x1; x += 4) g.hline(x, x + 2, 260, c('#dcdcd4'));
+      g.hline(x0, x1, 262, c('#1a4064'));
+      for (let x = x0; x <= x1; x++) if (HD.bayer(x, 263) < 0.5) g.px(x, 263, c('#24507a'));
+      // pilings rise from the water at the back edge of the deck
+      for (let x = x0 + 9; x <= x1 - 3; x += 29) {
+        g.rect(x, 250, 3, 6, c('#7a6a54'));
+        g.px(x, 250, c('#5e5040'));
+        g.vline(x + 2, 251, 255, c('#9a8a70'));
+        g.hline(x, x + 2, 249, c('#d8d4c8'));
+        g.px(x + 1, 255, c('#4a3e30'));
+        // mooring cleat on the deck
+        g.hline(x + 6, x + 8, 257, c('#4a4c50'));
+      }
     }
   }
 
@@ -863,8 +918,8 @@
     const rx = spec.rx;
     const ry = spec.ry;
     const lean = spec.lean || 0;
-    const bw = rx * 2 + 10 + Math.abs(lean) * 2;
-    const bh = spec.h + 6;
+    const bw = (rx + spec.cr1 + 3) * 2 + Math.abs(lean) * 2;
+    const bh = spec.h + spec.cr1 + 4;
     const ax = (bw >> 1) - (lean >> 1);
     const ay = bh - 2;
     const ccx = ax + lean;
@@ -886,7 +941,7 @@
       for (let y = ay; y >= tTop; y--) {
         const f = (ay - y) / Math.max(1, ay - tTop);
         const x = ax + R((ccx - ax) * f);
-        const tw = Math.max(1, spec.tw - (f > 0.75 && spec.tw > 2 ? 1 : 0));
+        const tw = spec.tw > 4 ? R(spec.tw * (1 - 0.35 * f)) : Math.max(1, spec.tw - (f > 0.75 && spec.tw > 2 ? 1 : 0));
         const x0 = x - (tw >> 1);
         g.hline(x0, x0 + tw - 1, y, c(A.bark[2], k));
         g.px(x0, y, c(A.bark[1], k));
@@ -902,13 +957,13 @@
       const limbs = spec.limbs || 3;
       for (let i = 0; i < limbs; i++) {
         const a = Math.PI / 2 + (i - (limbs - 1) / 2) * (1.6 / limbs) + (rng() - 0.5) * 0.3;
-        const len = ry * (0.75 + rng() * 0.35);
+        const len = ry * (0.55 + rng() * 0.25);
         const x2 = ccx + Math.cos(a) * len * (rx / ry);
         const y2 = tTop - Math.sin(a) * len;
-        g.line(ccx, tTop, x2, y2, c(A.bark[2], k));
-        if (spec.tw > 3) g.line(ccx + 1, tTop, x2 + 1, y2, c(A.bark[1], k));
+        const lw = spec.tw > 4 ? Math.max(2, R(spec.tw * 0.45)) : spec.tw > 3 ? 2 : 1;
+        for (let j = 0; j < lw; j++) g.line(ccx - (lw >> 1) + j, tTop, x2 - (lw >> 1) + j + (j > 0 ? 0 : 0), y2 + j * 0.5, c(j === 0 ? A.bark[1] : j === lw - 1 ? A.bark[3] : A.bark[2], k));
         const a2 = a + (rng() < 0.5 ? 0.5 : -0.5);
-        g.line(x2, y2, x2 + Math.cos(a2) * len * 0.4, y2 - Math.sin(a2) * len * 0.4, c(A.bark[3], k));
+        g.line(x2, y2, x2 + Math.cos(a2) * len * 0.3, y2 - Math.sin(a2) * len * 0.3, c(A.bark[3], k));
       }
       // clumps on rings: a full crown with a bumpy outline
       const clumps = [];
@@ -921,10 +976,10 @@
         for (let i = 0; i < cnt; i++) {
           if (rf > 0.3 && spec.gaps && rng() < spec.gaps) continue;
           const a = (i / cnt) * TAU + rng() * 0.5 + rf * 2.1;
-          const d = rf * (0.88 + rng() * 0.22);
+          const d = rf * (1 - (spec.jit || 0.12) + rng() * (spec.jit || 0.12) * 2);
           let x = ccx + Math.cos(a) * d * (rx - spec.cr0 * 0.7);
           const y = ccy + Math.sin(a) * d * (ry - spec.cr0 * 0.7);
-          const r = spec.cr0 + rng() * (spec.cr1 - spec.cr0);
+          const r = (spec.cr0 + rng() * (spec.cr1 - spec.cr0)) * (1 - (spec.shrink === undefined ? 0.2 : spec.shrink) * rf);
           const fy = (ccy + ry - y) / (2 * ry);
           if (fy > 0.4) x += sway * (fy > 0.72 ? 1 : 0.5);
           clumps.push({ x, y, r, p: !alt || rng() < 0.55 ? pal : alt });
@@ -980,7 +1035,7 @@
     return { img, ax, ay };
   }
 
-  /** a bare winter tree: recursive branches, snow on their upper edges */
+  /** a bare winter tree: a vase of forking limbs, snow along their tops */
   function bakeBare(spec, sway, X) {
     const c = X.c;
     const bw = spec.rx * 2 + 12;
@@ -988,56 +1043,85 @@
     const ax = bw >> 1;
     const ay = bh - 2;
     const snowAmt = X.snow;
+    // crown envelope: twigs stop at a rounded outline
+    const ccx = ax;
+    const ccy = ay - spec.h * 0.62;
+    const erx = spec.rx;
+    const ery = spec.h * 0.36;
     const img = HD.bake(bw, bh, (g) => {
       const rng = HD.rng(spec.seed + 5);
       const occ = new Uint8Array(bw * bh);
-      const put = (x, y, col) => {
+      const flat = new Uint8Array(bw * bh);
+      const put = (x, y, col, f) => {
         x = R(x);
         y = R(y);
         if (x < 0 || y < 0 || x >= bw || y >= bh) return;
         occ[y * bw + x] = 1;
+        if (f) flat[y * bw + x] = 1;
         g.px(x, y, col);
       };
-      const seg = (x0, y0, x1, y1, col, wide) => {
-        const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
-        for (let i = 0; i <= n; i++) {
-          const x = x0 + ((x1 - x0) * i) / n;
-          const y = y0 + ((y1 - y0) * i) / n;
-          put(x, y, col);
-          if (wide) put(x + 1, y, c(A.bark[1]));
-        }
-      };
+      const tone = (d) => c(d < 2 ? A.bark[2] : d < 4 ? A.bark[3] : mixA(A.bark[3], '#a0948a', 0.35));
       const branch = (x, y, ang, len, depth) => {
+        // clip the length to the crown envelope
+        let L = len;
+        for (let i = 0; i < 6; i++) {
+          const ex = (x + Math.cos(ang) * L - ccx) / erx;
+          const ey = (y - Math.sin(ang) * L - ccy) / ery;
+          if (ex * ex + ey * ey <= 1) break;
+          L *= 0.82;
+        }
+        // a slight bend half way
+        const bend = (rng() - 0.5) * 0.3;
+        const mx = x + Math.cos(ang) * L * 0.5;
+        const my = y - Math.sin(ang) * L * 0.5;
+        const a2 = ang + bend;
         const swayK = depth >= 3 ? sway * 0.5 * (depth - 2) : 0;
-        const x2 = x + Math.cos(ang) * len + swayK;
-        const y2 = y - Math.sin(ang) * len;
-        seg(x, y, x2, y2, c(depth < 2 ? A.bark[2] : depth < 4 ? A.bark[3] : mixA(A.bark[3], '#9a8a7c', 0.4)), depth <= 1);
-        if (depth >= spec.depth) return;
-        for (let i = 0; i < 2; i++) {
-          const spread = 0.38 + rng() * 0.3;
-          const a2 = ang + (i - 0.5) * spread * 1.4 + (rng() - 0.5) * 0.25;
-          // branches keep reaching upwards (a vase-shaped street tree)
-          const up = a2 + (Math.PI / 2 - a2) * 0.18;
-          branch(x2, y2, up, len * (0.64 + rng() * 0.14), depth + 1);
+        const x2 = mx + Math.cos(a2) * L * 0.5 + swayK;
+        const y2 = my - Math.sin(a2) * L * 0.5;
+        const flatish = Math.abs(Math.sin(ang)) < 0.9;
+        for (const [p0x, p0y, p1x, p1y] of [
+          [x, y, mx, my],
+          [mx, my, x2, y2],
+        ]) {
+          const n = Math.max(1, Math.ceil(Math.max(Math.abs(p1x - p0x), Math.abs(p1y - p0y))));
+          for (let i = 0; i <= n; i++) {
+            const px = p0x + ((p1x - p0x) * i) / n;
+            const py = p0y + ((p1y - p0y) * i) / n;
+            put(px, py, tone(depth), flatish);
+            if (depth <= 1) put(px + 1, py, c(A.bark[1]), flatish);
+          }
+        }
+        if (depth >= spec.depth || L < 3) return;
+        const kids = depth < 2 ? 3 : rng() < 0.6 ? 2 : 3;
+        for (let i = 0; i < kids; i++) {
+          const spread = (0.35 + rng() * 0.3) * (kids === 3 ? 1.1 : 1);
+          let na = a2 + (i - (kids - 1) / 2) * spread + (rng() - 0.5) * 0.3;
+          na += (Math.PI / 2 - na) * 0.12; // keep reaching up
+          branch(x2, y2, na, L * (0.62 + rng() * 0.16), depth + 1);
         }
       };
-      const fork = ay - R(spec.h * 0.36);
+      const fork = ay - R(spec.h * 0.34);
       for (let y = ay; y >= fork; y--) {
         g.px(ax, y, c(A.bark[1]));
         g.px(ax + 1, y, c(A.bark[3]));
         occ[y * bw + ax] = 1;
         occ[y * bw + ax + 1] = 1;
       }
-      branch(ax, fork, Math.PI / 2 + 0.6, spec.h * 0.28, 1);
-      branch(ax + 1, fork, Math.PI / 2 - 0.55, spec.h * 0.3, 1);
-      branch(ax, fork, Math.PI / 2 + 0.08, spec.h * 0.34, 1);
+      const limbs = [
+        [Math.PI / 2 + 0.7, 0.3],
+        [Math.PI / 2 + 0.22, 0.34],
+        [Math.PI / 2 - 0.25, 0.33],
+        [Math.PI / 2 - 0.72, 0.28],
+      ];
+      for (const [a, l] of limbs) branch(ax + (a < Math.PI / 2 ? 1 : 0), fork, a + (rng() - 0.5) * 0.15, spec.h * l, 1);
       if (snowAmt > 0)
-        for (let y = 1; y < bh; y++)
+        for (let y = 2; y < bh; y++)
           for (let x = 0; x < bw; x++) {
-            if (!occ[y * bw + x] || occ[(y - 1) * bw + x]) continue;
-            if (hash(spec.seed, x, y, 8) < Math.min(0.9, snowAmt * 0.9 + 0.12)) {
-              g.px(x, y - 1, SNOW_N[snowAmt > 0.6 ? 2 : 1]);
-              if (snowAmt > 0.6 && hash(spec.seed, x, y, 9) < 0.25 && y > 2 && !occ[(y - 2) * bw + x]) g.px(x, y - 2, SNOW_N[3]);
+            const i = y * bw + x;
+            if (!occ[i] || occ[i - bw] || !flat[i]) continue;
+            if (hash(spec.seed, x, y, 8) < Math.min(0.92, snowAmt * 0.8 + 0.3)) {
+              g.px(x, y - 1, SNOW_N[snowAmt > 0.6 ? 3 : 2]);
+              if (snowAmt > 0.6 && hash(spec.seed, x, y, 9) < 0.3 && !occ[i - 2 * bw]) g.px(x, y - 2, SNOW_N[2]);
             }
           }
     });
@@ -1066,10 +1150,10 @@
         if (f < 0.05) g.px(x - 1, y, c(A.palmTrunk[0]));
       }
       // the dry skirt hanging under the crown
-      for (let i = -3; i <= 3; i++) {
-        const len = 3 + R(rng() * 3) + (Math.abs(i) < 2 ? 2 : 0);
-        const col = c(A.palmDry[(i + 5) % 2]);
-        for (let j = 0; j < len; j++) g.px(tx + i + (j > 2 ? Math.sign(i) : 0), ty + 1 + j, col);
+      for (let i = -2; i <= 2; i++) {
+        const len = 2 + R(rng() * 2) + (i === 0 ? 2 : 0);
+        const col = c(A.palmDry[i & 1 ? 0 : 1]);
+        for (let j = 0; j < len; j++) g.px(tx + i + (j > 1 && i ? Math.sign(i) : 0), ty + j, col);
       }
       // fronds: a back layer (darker) and a front layer
       for (let layer = 0; layer < 2; layer++) {
@@ -1096,6 +1180,7 @@
     return { img, ax, ay };
   }
 
+  const rngPick = (seed) => hash(seed, 1, 2, 3) < 0.3;
   function treeSpec(t, X) {
     const s = X.season;
     const base = { seed: t.seed };
@@ -1107,13 +1192,13 @@
     if (t.kind === 'palm') return Object.assign(base, { type: 'palm', h: t.h, lean: t.lean, fl: 12 });
     if (t.kind === 'ficus') return Object.assign(base, { type: 'leafy', h: 34, rx: 13, ry: 11, tw: 2, cr0: 4, cr1: 6, pal: A.leafFicus, limbs: 2, rings: [[0, 1], [0.5, 4], [0.85, 7]] });
     if (t.kind === 'oak')
-      return Object.assign(base, { type: 'leafy', h: 212, rx: 60, ry: 68, tw: 9, cr0: 10, cr1: 16, pal: A.leafDeep, pal2: A.leafSummer, limbs: 6, lean: -6, gaps: 0.08, rings: [[0, 1], [0.3, 5], [0.58, 10], [0.86, 16]] });
+      return Object.assign(base, { type: 'leafy', h: 204, rx: 54, ry: 66, tw: 12, cr0: 9, cr1: 15, pal: A.leafDeep, pal2: A.leafSummer, limbs: 5, lean: 4, gaps: 0.04, jit: 0.16, shrink: 0.08, rings: [[0, 1], [0.28, 6], [0.55, 11], [0.78, 17], [0.94, 19]] });
     if (t.kind === 'dogwood') return Object.assign(base, { type: 'leafy', h: 50, rx: 18, ry: 14, tw: 2, cr0: 4, cr1: 7, pal: A.leafSummer, limbs: 3, rings: R3 });
     if (t.kind === 'locust') return Object.assign(base, { type: 'leafy', h: 66, rx: 18, ry: 17, tw: 2, cr0: 3, cr1: 5, pal: A.leafSummer, holes: 0.08, limbs: 4, rings: [[0, 1], [0.35, 5], [0.62, 9], [0.88, 13]] });
     // Boston street tree by season
     if (s === 'winter') return Object.assign(base, { type: 'bare', h: 60, rx: 19, depth: 5 });
-    if (s === 'spring') return Object.assign(base, { type: 'leafy', h: 60, rx: 18, ry: 18, tw: 2, cr0: 4, cr1: 6, pal: A.blossom, pal2: A.blossomWhite, holes: 0.05, limbs: 4, rings: [[0, 1], [0.4, 6], [0.8, 11]], dots: { n: 26, col: '#7cae4c' } });
-    if (s === 'autumn') return Object.assign(base, { type: 'leafy', h: 60, rx: 18, ry: 18, tw: 2, cr0: 4, cr1: 7, pal: A.autumnOrange, pal2: A.autumnGold, gaps: 0.12 + X.leaves * 0.15, holes: 0.04, limbs: 4, rings: R3 });
+    if (s === 'spring') return Object.assign(base, { type: 'leafy', h: 60, rx: 18, ry: 18, tw: 2, cr0: 4, cr1: 6, pal: A.blossom, pal2: rngPick(t.seed) ? A.blossomWhite : A.blossom, holes: 0.03, limbs: 4, rings: [[0, 1], [0.4, 6], [0.8, 11]], dots: { n: 26, col: '#7cae4c' } });
+    if (s === 'autumn') return Object.assign(base, { type: 'leafy', h: 60, rx: 18, ry: 18, tw: 2, cr0: 4, cr1: 7, pal: A.autumnOrange, pal2: X.mode === 'night' ? A.autumnRed : A.autumnGold, gaps: 0.12 + X.leaves * 0.15, limbs: 4, rings: R3 });
     return Object.assign(base, { type: 'leafy', h: 60, rx: 18, ry: 18, tw: 2, cr0: 5, cr1: 7, pal: A.leafSummer, limbs: 3, rings: R3 });
   }
 
@@ -1502,8 +1587,8 @@
   // fall towards the viewer and to the left (away from HD.light().sun)
   // ------------------------------------------------------------------
   function sunVec(X) {
-    if (X.mode === 'day') return { vx: -0.34, vy: 0.15, k: 0.4 };
-    if (X.mode === 'golden') return { vx: -1.15, vy: 0.15, k: 0.5 };
+    if (X.mode === 'day') return { vx: -0.34, vy: 0.15, k: 0.46 };
+    if (X.mode === 'golden') return { vx: -1.15, vy: 0.15, k: 0.58 };
     return null;
   }
 
@@ -1548,7 +1633,16 @@
       const sp = t.spec;
       if (sp.type === 'palm') {
         stick(t.x, t.base, sp.h, 2);
-        S.push({ poly: ellipsePoly(t.x + sp.lean + vx * sp.h, t.base + vy * sp.h, 10 + Math.abs(vx) * 4, 2.5 + vy * 8, 12), k });
+        // the crown's shadow: a flattened star of fronds
+        const cx = t.x + sp.lean + vx * sp.h;
+        const cy = t.base + vy * sp.h;
+        const star = [];
+        for (let i = 0; i < 22; i++) {
+          const a = (i / 22) * TAU + 0.2;
+          const rr = i & 1 ? 0.42 : 1;
+          star.push([cx + Math.cos(a) * rr * (11 + Math.abs(vx) * 3), cy + Math.sin(a) * rr * (2.6 + vy * 8)]);
+        }
+        S.push({ poly: star, k });
       } else {
         const hc = sp.type === 'bare' ? sp.h * 0.65 : sp.h - sp.ry;
         stick(t.x, t.base, hc * 0.6, sp.tw || 2);
@@ -1600,6 +1694,10 @@
       for (let i = 0; i < 26; i++) out.glints.push({ x: R(rng() * W), y: R(207 + rng() * 22), s: rng() });
     }
     out.water = X.pl.id === 'marina';
+    if (out.water) {
+      out.dockMask = new Uint8Array(W * 34);
+      for (let y = 236; y <= 269; y++) for (let x = 0; x < W; x++) out.dockMask[(y - 236) * W + x] = isDock(x, y) ? 1 : 0;
+    }
     return out;
   });
 
@@ -1725,23 +1823,28 @@
     const d = img.data;
     const ph = T.phase(t, 6, 0.2);
     const tq = (T.step(t, 4) * 4) | 0;
+    const mask = A0.dockMask;
     for (let y = yW0; y <= yW1; y++) {
-      if (y >= 257 && y <= 262) continue; // keep the docks clean
       const f = (y - yW0) / (yW1 - yW0);
       const kk = 0.42 - f * 0.22;
+      const k1 = 1 - kk;
       const wob = R(Math.sin(TAU * (ph + y * 0.21)) * (0.6 + f * 1.4));
       const sy = 2 * ym - y - 1 - sTop;
+      const mrow = (y - yW0) * W;
       for (let x = 0; x < W; x++) {
-        const di = ((y - yW0) * W + x) * 4;
-        // the docks' pilings stay put
-        if (y > 247 && d[di + 2] < d[di]) continue;
-        const sx = Math.min(W - 1, Math.max(0, x + wob));
+        if (mask[mrow + x]) continue;
+        // ripples break the mirror into short runs
+        if ((x & 7) === 0 && fh(x >> 3, y, tq) < 0.18) {
+          x += 7;
+          continue;
+        }
+        const sx = x + wob < 0 ? 0 : x + wob >= W ? W - 1 : x + wob;
         const si = (sy * W + sx) * 4;
         if (src[si + 3] === 0) continue;
-        if (hash(x >> 3, y, 3, tq) < 0.18) continue;
-        d[di] = d[di] * (1 - kk) + src[si] * 0.8 * kk;
-        d[di + 1] = d[di + 1] * (1 - kk) + src[si + 1] * 0.9 * kk;
-        d[di + 2] = d[di + 2] * (1 - kk) + src[si + 2] * kk;
+        const di = (mrow + x) * 4;
+        d[di] = d[di] * k1 + src[si] * 0.8 * kk;
+        d[di + 1] = d[di + 1] * k1 + src[si + 1] * 0.9 * kk;
+        d[di + 2] = d[di + 2] * k1 + src[si + 2] * kk;
       }
     }
     ctx.putImageData(img, 0, yW0);
@@ -1751,10 +1854,9 @@
     for (let i = 0; i < 46; i++) {
       const cy = T.cycle(t, i, 4.5, 4801);
       const y = R(237 + cy.rnd(1) * 32);
-      if (y >= 247 && y <= 263) continue;
       const x = R(cy.rnd(2) * W + cy.age * 6 * (cy.rnd(3) < 0.5 ? -1 : 1));
       const len = R(2 + cy.rnd(4) * 4 * (1 - Math.abs(cy.age - 0.5) * 1.6));
-      if (len < 1) continue;
+      if (len < 1 || isDock(x, y) || isDock(x + len, y)) continue;
       g.hline(x, x + len, y, cy.age > 0.3 && cy.age < 0.7 ? lite : mid);
     }
     // sun glitter: emissive sparkles, densest under the sun
@@ -1767,7 +1869,7 @@
         const near = i < 26;
         const x = R(near ? sun.x + (cy.rnd(1) + cy.rnd(2) - 1) * 46 : cy.rnd(1) * W);
         const y = R(237 + cy.rnd(3) * 32);
-        if (y >= 247 && y <= 263) continue;
+        if (isDock(x, y) || isDock(x - 1, y) || isDock(x + 1, y)) continue;
         e.px(x, y, cy.age < 0.25 ? '#ffffff' : '#fff2c8');
         if (cy.rnd(4) < 0.25 && cy.age > 0.15 && cy.age < 0.35) {
           e.px(x - 1, y, '#e8f4ff');
@@ -1826,16 +1928,21 @@
     const ph = T.phase(t, 2.3);
     for (let y = ry0; y <= ry1; y++) {
       const f = (y - ry0) / (ry1 - ry0);
-      const fall = 0.5 * (1 - f) * (1 - f) + 0.12;
-      const wob = R(Math.sin(TAU * (ph + y * 0.37)) * 0.8);
+      const fall = 0.42 * (1 - f) * (1 - f) + 0.08;
+      // ripple lines: every few rows the mirror breaks up
+      const rip = (y + ((T.step(t, 3) * 3) | 0)) % 4 === 0;
+      const wob = R(Math.sin(TAU * (ph + y * 0.37)) * (0.6 + f * 1.2));
+      const carRow = y >= cy0 && y <= cy1;
+      const cut = rip ? 0.85 : 0.28 + 0.3 * f;
+      const yo = y * 3;
       for (let x = 0; x < W; x++) {
-        if (x >= cx0 && x <= cx1 && y >= cy0 && y <= cy1) continue;
-        const sx = Math.min(W - 1, Math.max(0, x + wob));
+        if (carRow && x >= cx0 && x <= cx1) continue;
+        const sx = x + wob < 0 ? 0 : x + wob >= W ? W - 1 : x + wob;
         const r = COLR[sx];
         if (r === 0) continue;
-        const hv = hash(x >> 2, y, sh2 + (y & 3), 41);
-        if (hv < 0.35) continue;
-        const kk = fall * (0.6 + 0.4 * hv);
+        const hv = fh((x + yo) >> 2, y, sh2 + (y & 3));
+        if (hv < cut) continue;
+        const kk = fall * (0.55 + 0.45 * hv);
         const i = ((y - ry0) * W + x) * 4;
         d[i] = Math.min(255, d[i] + r * kk);
         d[i + 1] = Math.min(255, d[i + 1] + COLG[sx] * kk * 0.92);
@@ -1847,9 +1954,11 @@
       const s = C0.spr;
       const hx = C0.dir > 0 ? C0.x + s.head[0] : C0.x + (s.L - 1 - s.head[0]);
       const tx = C0.dir > 0 ? C0.x + s.tail[0] : C0.x + (s.L - 1 - s.tail[0]);
-      for (let y = C0.y + s.bot + 1; y < Math.min(H, C0.y + s.bot + 12); y++) {
-        if (hash(hx, y, sh2, 5) > 0.35) g.px(hx, y, 'rgba(255,236,190,0.45)');
-        if (hash(tx, y, sh2, 6) > 0.45) g.px(tx, y, 'rgba(255,70,50,0.4)');
+      for (let y = C0.y + s.bot + 1; y < Math.min(H, C0.y + s.bot + 11); y++) {
+        const a = 0.42 * (1 - (y - C0.y - s.bot) / 11);
+        const w = R(Math.sin(TAU * (ph + y * 0.37)) * 0.8);
+        if (hash(hx, y, sh2, 5) > 0.3) g.px(hx + w, y, 'rgba(255,236,190,' + a.toFixed(2) + ')');
+        if (hash(tx, y, sh2, 6) > 0.4) g.px(tx + w, y, 'rgba(255,70,50,' + (a * 0.9).toFixed(2) + ')');
       }
     }
   }

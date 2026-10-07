@@ -1,7 +1,19 @@
+# tool outputs (videos, segments, shots, sheets, probe dumps: tools write into out/ by default)
 out/
+dist/
 review/
+# dependencies
 node_modules/
+npm-debug.log*
+# media
 *.mp4
 *.mov
 *.mkv
-dist/
+*.wav
+*.m4a
+# defaults of older tool versions, written in the working directory
+/shot.png
+/shot-t*.png
+/sheet.png
+# ffmpeg two-pass logs if an encode is run from the repo root
+/ffmpeg2pass-*.log*

@@ -99,79 +99,56 @@
     toyRed: ['#6e161d', '#a8222b', '#cc3636'],
     toyYel: ['#9a7216', '#d4a226', '#f0c648'],
     toyBlue: ['#1c3a74', '#2a56a6', '#4474c8'],
-    toyGreen: ['#1c6430', '#2a8a46', '#44a85e'],
     teal: ['#1c505a', '#286e7a', '#3a8892'],
     mustard: ['#86601a', '#b88626', '#d4a23a'],
     blade: ['#5a1a1e', '#8a2a2a', '#a83a34'],
   };
 
   // ------------------------------------------------------------------
-  // bake painter: g.em pixels are marked emissive, plain g pixels clear
-  // the mark (last write wins); split() returns the two layers
+  // bake painter: two canvases, plain and emissive. Drawing on one clears
+  // the same pixels on the other (last write wins), so the emissive layer
+  // can sit behind window bars drawn later with plain pixels.
   // ------------------------------------------------------------------
   function painter(w, h, ox, oy) {
-    const col = HD.canvas(w, h, true);
-    const msk = HD.canvas(w, h, true);
-    const cx = col.getContext('2d');
-    const mx = msk.getContext('2d');
-    cx.setTransform(1, 0, 0, 1, -ox, -oy);
-    mx.setTransform(1, 0, 0, 1, -ox, -oy);
-    const proxy = (op) => ({
-      fillStyle: '#fff',
-      fillRect(x, y, a, b) {
-        mx.globalCompositeOperation = op;
-        mx.fillStyle = '#fff';
-        mx.fillRect(x, y, a, b);
-      },
-      drawImage(...a) {
-        mx.globalCompositeOperation = op;
-        mx.drawImage(...a);
-      },
-      save() {
-        mx.save();
-      },
-      restore() {
-        mx.restore();
-      },
-      translate(a, b) {
-        mx.translate(a, b);
-      },
-      scale(a, b) {
-        mx.scale(a, b);
-      },
-    });
-    const g = HD.makeGfx(cx, proxy('destination-out'));
-    g.em = HD.makeGfx(cx, proxy('source-over'));
-    return { g, col, msk, w, h, ox, oy };
-  }
-  function split(p) {
-    const { w, h } = p;
-    const cd = p.col.getContext('2d').getImageData(0, 0, w, h).data;
-    const md = p.msk.getContext('2d').getImageData(0, 0, w, h).data;
     const body = HD.canvas(w, h, true);
     const glow = HD.canvas(w, h, true);
-    const bi = body.getContext('2d').createImageData(w, h);
-    const gi = glow.getContext('2d').createImageData(w, h);
-    let nb = 0;
-    let ng = 0;
-    for (let i = 0; i < cd.length; i += 4) {
-      if (cd[i + 3] === 0) continue;
-      let o;
-      if (md[i + 3]) {
-        o = gi.data;
-        ng++;
-      } else {
-        o = bi.data;
-        nb++;
-      }
-      o[i] = cd[i];
-      o[i + 1] = cd[i + 1];
-      o[i + 2] = cd[i + 2];
-      o[i + 3] = 255;
-    }
-    body.getContext('2d').putImageData(bi, 0, 0);
-    glow.getContext('2d').putImageData(gi, 0, 0);
-    return { body: nb ? body : null, glow: ng ? glow : null, x: p.ox, y: p.oy };
+    const bx = body.getContext('2d');
+    const gx = glow.getContext('2d');
+    bx.setTransform(1, 0, 0, 1, -ox, -oy);
+    gx.setTransform(1, 0, 0, 1, -ox, -oy);
+    const used = { body: false, glow: false };
+    // the "mask" of each gfx erases the other canvas
+    const eraser = (ctx, mine) => ({
+      fillStyle: '#fff',
+      fillRect(x, y, a, b) {
+        used[mine] = true;
+        ctx.clearRect(x, y, a, b);
+      },
+      drawImage(...a) {
+        used[mine] = true;
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(...a);
+        ctx.globalCompositeOperation = 'source-over';
+      },
+      save() {
+        ctx.save();
+      },
+      restore() {
+        ctx.restore();
+      },
+      translate(a, b) {
+        ctx.translate(a, b);
+      },
+      scale(a, b) {
+        ctx.scale(a, b);
+      },
+    });
+    const g = HD.makeGfx(bx, eraser(gx, 'body'));
+    g.em = HD.makeGfx(gx, eraser(bx, 'glow'));
+    return { g, body, glow, used, ox, oy };
+  }
+  function split(p) {
+    return { body: p.used.body ? p.body : null, glow: p.used.glow ? p.glow : null, x: p.ox, y: p.oy };
   }
   /** bake a small two-layer sprite of region (x, y, w, h) with fn(g) */
   function bake2(x, y, w, h, fn) {
@@ -557,7 +534,88 @@
       w.state = v < thr ? 'lit' : v < thr + tvBand ? 'tv' : 'dark';
       w.glint = (w.bay === 'T' || w.bay === 'R') && HD.hash(w.x, w.y, 15, idx) < 0.35;
     }
+    // keep the cat window the brightest unit of the centre bay: at most one
+    // neighbour's balcony door lit (two at dusk), the rest dark
+    const doors = wins.filter((w) => w.frame === 'door' && w.state === 'lit');
+    doors.sort((a, b) => HD.hash(a.y, idx, 16) - HD.hash(b.y, idx, 16));
+    doors.slice(c.mode === 'dusk' ? 2 : 1).forEach((w) => (w.state = 'dark'));
     return wins;
+  }
+
+  // ------------------------------------------------------------------
+  // seasonal touches in a few neighbours' windows, and window boxes
+  // ------------------------------------------------------------------
+  const BOX_FLOWERS = {
+    spring: ['#e85a7a', '#f0c030', '#f6f0e0', '#d84a6a'],
+    summer: ['#d83a3a', '#f05a8a', '#e8e0f0', '#c82a3a'],
+    autumn: ['#e07a1a', '#f0b030', '#b84a1a', '#e8a020'],
+  };
+  function seasonalWindows(g, env) {
+    const { ed, c } = env;
+    const lit = env.wins.filter((w) => w.state === 'lit' && w.frame !== 'door' && w.look !== 'curtain' && w.look !== 'blind');
+    const pick = (n, seed) => lit.slice().sort((a, b) => HD.hash(a.x, a.y, seed) - HD.hash(b.x, b.y, seed)).slice(0, n);
+    const e = g.em;
+    if (ed.id === 'diwali') {
+      for (const w of pick(3, 1)) {
+        // a string of little gold lights across the top and a diya on the sill
+        e.hline(w.x, w.x + w.w - 1, w.y + 1, AM[2]);
+        for (let x = w.x + (w.x & 1); x < w.x + w.w; x += 2) e.px(x, w.y + 2, '#ffe28a');
+        e.hline(w.x + 1, w.x + 3, w.y + w.h - 2, AM[1]);
+        e.px(w.x + 2, w.y + w.h - 3, '#fff2b0');
+        e.px(w.x + 2, w.y + w.h - 4, '#ffb040');
+      }
+    } else if (ed.id === 'halloween25') {
+      for (const w of pick(2, 2)) {
+        // a carved pumpkin on the sill
+        const px = w.x + w.w - 5;
+        const py = w.y + w.h - 4;
+        e.rect(px, py, 4, 3, '#a8401a');
+        e.hline(px, px + 3, py, '#c85a22');
+        e.px(px + 1, py + 1, '#ffd070');
+        e.px(px + 2, py + 1, '#ffd070');
+        e.px(px + 1, py - 1, '#2a3a12');
+      }
+    } else if (ed.id === 'christmas') {
+      for (const w of pick(3, 3)) {
+        // a small tree with coloured lights
+        const tx = w.x + 2 + (HD.hash(w.x, w.y, 4) < 0.5 ? 0 : w.w - 6);
+        const by = w.y + w.h - 2;
+        const G = ['#1a4a26', '#225a30'];
+        for (let r = 0; r < 7; r++) {
+          const hw = r < 2 ? 0 : r < 4 ? 1 : 2;
+          e.hline(tx - hw, tx + hw, by - 7 + r, G[r & 1]);
+        }
+        e.px(tx, by, AM[1]);
+        e.px(tx, by - 8, '#fff2b0');
+        const B = ['#ff5a4a', '#ffe28a', '#5a9aff', '#5ae07a'];
+        for (let k = 0; k < 4; k++) e.px(tx + [-1, 1, 0, -2][k], by - [3, 4, 6, 1][k], B[(k + w.x) % 4]);
+      }
+    } else if (ed.id === 'lunar') {
+      for (const w of pick(3, 5)) {
+        // a red paper lantern hanging in the window
+        const lx = w.x + (w.w >> 1) - 1;
+        e.vline(lx + 1, w.y, w.y + 1, AM[1]);
+        e.hline(lx, lx + 2, w.y + 2, '#e0b636');
+        e.rect(lx - 1, w.y + 3, 5, 4, '#c4262f');
+        e.vline(lx + 1, w.y + 3, w.y + 6, '#ff6b5a');
+        e.hline(lx, lx + 2, w.y + 7, '#e0b636');
+        e.px(lx + 1, w.y + 8, '#e0b636');
+      }
+    }
+    // window boxes on the plain windows from spring to autumn
+    const fl = BOX_FLOWERS[ed.season];
+    if (!fl) return;
+    for (const w of env.wins) {
+      if (w.frame !== 'plain' || w.f === 5 || HD.hash(w.x, w.y, 9) > 0.5) continue;
+      const by = w.y + w.h;
+      g.rect(w.x - 1, by - 1, w.w + 2, 2, c.m('#5a4436'));
+      g.hline(w.x - 1, w.x + w.w, by - 1, c.m('#7a5c48'));
+      for (let x = w.x; x < w.x + w.w; x++) {
+        const hv = HD.hash(x, by, 10);
+        g.px(x, by - 2, c.m(hv < 0.5 ? '#3a6a32' : '#4a7a3a'));
+        if (hv < 0.6) g.px(x, by - 3 - (hv < 0.2 ? 1 : 0), c.m(fl[Math.floor(hv * 40) % fl.length]));
+      }
+    }
   }
 
   // ------------------------------------------------------------------
@@ -930,7 +988,8 @@
     g.vline(BAY.M[1] - 1, 56, 165, c.m('#2a282e'));
     g.rect(BAY.M[0], 56, 50, 2, c.m('#1c1b20'));
     // a soft shadow under the cornice on every bay
-    g.dither(148, 56, 128, 3, c.m('#1e1c22'), 0.5);
+    g.hline(148, 275, 56, c.m('#1e1c22'));
+    g.hline(148, 275, 57, c.m('#2a272d'));
     // corner tower: silver metal panels
     const pn = c.r(MAT.panel);
     g.rect(276, 44, 47, 122, pn[2]);
@@ -949,6 +1008,10 @@
       // cold rim of moon and city glow on the tower's right edge
       g.vline(322, 44, 165, '#5670a3');
       for (let y = 45; y < 166; y += 2) g.px(321, y, '#41558a');
+    } else if (c.mode === 'golden') {
+      // the low sun rakes the tower's right edge
+      g.vline(322, 44, 165, c.d('#fff0d0'));
+      g.vline(321, 44, 165, c.d('#f4d6a8'));
     }
   }
 
@@ -1012,7 +1075,7 @@
     g.hline(272, 326, 40, co[3]);
     g.hline(272, 326, 41, co[2]);
     g.hline(272, 326, 43, co[0]);
-    g.dither(276, 44, 47, 2, c.m('#3a3d44'), 0.5);
+    g.hline(276, 322, 44, c.m('#3a3d44'));
     if (c.mode === 'night') {
       g.px(326, 40, '#a3b8d8');
       g.px(326, 41, '#7790bd');
@@ -1213,7 +1276,6 @@
         curtain: c.d('#a85a3a'),
         curtain2: c.d('#c87048'),
         lamp: c.d('#e8dcc0'),
-        lampGlow: null,
         pic: c.d('#4a7a8a'),
         hi: c.d('#d8c0a0'),
       };
@@ -1231,7 +1293,6 @@
       curtain: gold ? AM[2] : AM[3],
       curtain2: gold ? AM[3] : AM[4],
       lamp: AM[8],
-      lampGlow: AM[7],
       pic: '#2b5868',
       hi: AM[7],
     };
@@ -1439,6 +1500,7 @@
     drawNeighbour(g, env);
     drawBlock(g, env);
     drawWindows(g, env);
+    seasonalWindows(g, env);
     for (const f of FL) balcony(g, c, f, f.n !== 3);
     drawRoof(g, env);
     drawRetail(g, env);
@@ -1446,11 +1508,12 @@
     const out = { env, layers: split(p), room: bakeRoom(env), front: bakeFront(env) };
     out.bulbs = c.lit || c.mode === 'golden' ? bakeBulbs() : null;
     out.doors = [1, 2, 3, 4, 5].map((o) => bake2(211, 185, 21, 21, (gg) => lobbyDoors(gg, c, o)));
-    out.toggles = c.lit ? makeToggles(env) : [];
+    out.toggles = env.toggles = c.lit ? makeToggles(env) : [];
     for (const w of env.wins) w.panes = panesOf(w);
     out.tvs = env.wins.filter((w) => w.state === 'tv');
     out.lights = staticLights(env);
     out.shades = shadePolys(env);
+    out.walkers = c.lit ? makeWalkers(env) : [];
     out.party = tagOf(ed, 'party-windows') ? env.wins.filter((w) => w.state === 'lit' && w.frame !== 'door').slice(0, 4) : [];
     return out;
   }
@@ -1471,6 +1534,39 @@
       );
     }
     return frames;
+  }
+
+  /** neighbours who walk past their lit window now and then */
+  function makeWalkers(env) {
+    const busy = new Set((env.toggles || []).map((tg) => tg.w));
+    const cand = env.wins.filter((w) => w.state === 'lit' && w.frame !== 'door' && !busy.has(w) && (w.look === 'warm' || w.look === 'cool' || w.look === 'plant'));
+    cand.sort((a, b) => HD.hash(a.x, a.y, 81, env.idx) - HD.hash(b.x, b.y, 81, env.idx));
+    return cand.slice(0, 2).map((w, i) => {
+      const a = 25 + HD.hash(w.x, w.y, 82, env.idx) * 70 + i * 40;
+      return { w, at: [a, a + 110], dur: 3.2, dir: HD.hash(w.x, w.y, 83) < 0.5 ? 1 : -1 };
+    });
+  }
+  // a neighbour seen through the glass: a small figure with cat ears
+  const FIG = ['.X.X.', '.XXX.', '.XXX.', '..X..', 'XXXXX', '.XXX.', '.XXX.', '.XXX.'];
+  const LEGS = [
+    ['.X.X.', '.X.X.'],
+    ['..XX.', '.XX..'],
+  ];
+  function drawWalkers(g, t, A) {
+    const s = sec(t);
+    for (const k of A.walkers) {
+      let u = -1;
+      for (const a of k.at) if (s >= a && s < a + k.dur) u = (s - a) / k.dur;
+      if (u < 0) continue;
+      const w = k.w;
+      const fx = Math.round(k.dir > 0 ? w.x - 5 + u * (w.w + 6) : w.x + w.w - 1 - u * (w.w + 6));
+      const rows = FIG.concat(LEGS[Math.floor(T.step(t, 6) * 6) & 1]);
+      const fy = w.y + w.h - rows.length;
+      for (let r = 0; r < rows.length; r++) for (let i = 0; i < 5; i++) if (rows[r][i] === 'X') paneDot(g, w, fx + i, fy + r);
+    }
+  }
+  function paneDot(g, w, x, y) {
+    for (const p of w.panes) if (x >= p[0] && x < p[0] + p[2] && y >= p[1] && y < p[1] + p[3]) return g.em.px(x, y, AM[1]);
   }
 
   /** windows that switch on or off once in the loop (dusk and night) */
@@ -1606,7 +1702,11 @@
       e.px(px, py, k < 3 ? '#e8303a' : '#f2f2ff');
     }
     e.px(bx, by, '#ffffff');
-    if (goal >= 0) e.dither(x, y, w, h, '#f7ff9a', 0.25);
+    if (goal >= 0) {
+      // the replay: a bright frame around the picture
+      e.hline(x, x + w - 1, y, '#f7ff9a');
+      e.hline(x, x + w - 1, y + h - 1, '#f7ff9a');
+    }
   }
 
   function drawRoom(g, t, A) {
@@ -1637,6 +1737,8 @@
       e.rect(CW.x, CW.y + 1, 3 + sway, 9, AM[3]);
       e.vline(CW.x + 1, CW.y + 1, CW.y + 10 + sway, AM[4]);
     }
+    // match night: he stands on the balcony, drawn here so the rail covers him
+    if (cast.party === 'match' && HD.drawBalcony) HD.drawBalcony(g, t);
     blit2(g, A.front);
   }
 
@@ -1713,6 +1815,9 @@
     });
   }
 
+  /** is a switching window in its other state at loop second s (wraps the seam) */
+  const toggled = (tg, s) => (s >= tg.a && s < tg.b) || (s + HD.LOOP >= tg.a && s + HD.LOOP < tg.b);
+
   function doorOpen(t) {
     // the lobby doors slide open as the niece comes out and goes back in
     const n = HD.summer.niece(t);
@@ -1729,9 +1834,10 @@
     const A = art();
     blit2(g, A.layers);
     const s = sec(t);
-    for (const tg of A.toggles) if (s >= tg.a && s < tg.b) blit2(g, tg.sp);
+    for (const tg of A.toggles) if (toggled(tg, s)) blit2(g, tg.sp);
     if (A.tvs.length) drawTVWindows(g, t, A);
     if (A.party.length) drawParty(g, t, A);
+    if (A.walkers.length) drawWalkers(g, t, A);
     if (A.bulbs) blit2(g, A.bulbs[Math.floor(T.phase(t, 1.5) * 3) % 3]);
     if (HD.edition.cast && HD.edition.cast.niece && HD.summer) {
       const o = doorOpen(t);
@@ -1747,7 +1853,7 @@
     const s = sec(t);
     for (const l of A.lights) L.add(l);
     for (const tg of A.toggles) {
-      if (!(s >= tg.a && s < tg.b) || !tg.on) continue;
+      if (!tg.on || !toggled(tg, s)) continue;
       L.add({ x: tg.w.x + (tg.w.w >> 1), y: tg.w.y + (tg.w.h >> 1) + 2, r: 9, ry: 11, color: WARM, i: 0.3, bands: 3 });
     }
     // the cat window: the room lamp lights the balcony and the cats
@@ -1767,6 +1873,11 @@
       L.add({ x: w.x + (w.w >> 1), y: w.y + (w.h >> 1), r: w.frame === 'door' ? 16 : 8, color: [0.4, 0.7, 1.0], i: 0.12 + 0.14 * n, bands: 3 });
     }
     for (const sh of A.shades) L.shade(sh);
+    // a lightning flash washes the facade with cold light for an instant
+    if (ed.weather && ed.weather.lightning > 0 && HD.sky && HD.sky.flash) {
+      const f = HD.sky.flash(t);
+      if (f > 0.05) L.add({ x: 200, y: 110, r: 190, ry: 110, color: [0.55, 0.65, 1.0], i: 0.85 * f, bands: 3, pow: 0.6, clip: { x0: 0, y0: 36, x1: 330, y1: 206 } });
+    }
   }
 
   // ------------------------------------------------------------------

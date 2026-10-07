@@ -233,6 +233,7 @@
       }
       const amp = 0.8 + c.rnd(4) * 1.4;
       const x = R(c.rnd(0) * (W + 50) - 30 + y * DRIFT_FAR + amp * sin(TAU * (age * (2 + c.rnd(5) * 2) + c.rnd(6))));
+      if (y > HD.placeTop(x)) continue; // behind a building: the scene covers it
       if (b > 0 && inTitle(x, y)) b--;
       g.rect(x, y, 1, 1, SF[b][lightIdx(x, y, 0.6)]);
     }
@@ -1484,7 +1485,7 @@
       if (c.age > 0.42) continue;
       const s = c.age / 0.42;
       const toLeft = c.rnd(0) < 0.5;
-      const y0 = 70 + c.rnd(1) * 100;
+      const y0 = 88 + c.rnd(1) * 84; // below the title-safe sky all the way across
       const x = toLeft ? W + 14 - (W + 28) * s : -14 + (W + 28) * s;
       const y = y0 + 6 * sin(TAU * (1.3 * s + c.rnd(2))) - 10 * s;
       const flapping = T.noise(t, 4.2, 9930 + i) > 0.5;
@@ -1536,20 +1537,28 @@
   // ------------------------------------------------------------------
   // hooks
   // ------------------------------------------------------------------
+  // particles queue their pixels per colour (weather.js: SEA.Q) and are
+  // flushed before the glowing fireflies and the gull sprites go on top
   SEA.far = function (g, t) {
     syncLight();
     const ed = HD.edition;
     const w = ed.weather;
-    if (w.snow > 0) snowFar(g, t, w.snow, ed.sky === 'clear');
+    const Q = SEA.Q;
+    if (w.snow > 0) {
+      snowFar(Q, t, w.snow, ed.sky === 'clear');
+      SEA.flushQ(g);
+    }
     if (gullsOn()) gullsFar(g, t);
   };
   SEA.mid = function (g, t) {
     syncLight();
     const ed = HD.edition;
     const w = ed.weather;
-    if (w.snow > 0) snowMid(g, t, w.snow, ed.sky === 'clear');
-    if (w.leaves > 0) leavesMid(g, t, w.leaves);
-    if (w.petals > 0) petalsMid(g, t, w.petals);
+    const Q = SEA.Q;
+    if (w.snow > 0) snowMid(Q, t, w.snow, ed.sky === 'clear');
+    if (w.leaves > 0) leavesMid(Q, t, w.leaves);
+    if (w.petals > 0) petalsMid(Q, t, w.petals);
+    SEA.flushQ(g);
     if (w.fireflies > 0) {
       const S = storyFlies();
       if (S) storyFireflies(g, t, S);
@@ -1563,9 +1572,11 @@
     syncLight();
     const ed = HD.edition;
     const w = ed.weather;
-    if (w.snow > 0) snowNear(g, t, w.snow, ed.sky === 'clear');
-    if (w.leaves > 0) leavesNear(g, t, w.leaves);
-    if (w.petals > 0.3) petalsNear(g, t, w.petals);
+    const Q = SEA.Q;
+    if (w.snow > 0) snowNear(Q, t, w.snow, ed.sky === 'clear');
+    if (w.leaves > 0) leavesNear(Q, t, w.leaves);
+    if (w.petals > 0.3) petalsNear(Q, t, w.petals);
+    SEA.flushQ(g);
     if (gullsOn()) gullsNear(g, t);
   };
   SEA.lights = function (t, L) {

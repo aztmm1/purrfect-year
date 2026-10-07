@@ -366,6 +366,7 @@
   // ------------------------------------------------------------------
   // passes
   // ------------------------------------------------------------------
+  const placeTop = (x) => HD.placeTop(x);
   function drawFar(g, t) {
     const F = C.FAR;
     const PP = FARP();
@@ -380,6 +381,7 @@
       const ax = xEnd - S * yEnd;
       const yh = Math.round(-4 + (yEnd + 4) * age);
       const xh = ax + S * yh;
+      if (yh - len > placeTop(xh)) continue; // behind a building: the scene covers it
       let b = r3 < 0.3 ? 0 : r3 < 0.88 ? 1 : 2;
       if (b > 0 && ((SOFT && r3 > 0.7) || inTitle(xh, yh))) b--;
       streak(g, ax, yh - len + 1, yh, F[b][lvOf(lum(xh, yh) * 0.6)]);
@@ -538,6 +540,38 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // colour batching: every particle takes its own colour from the light
+  // where it is, so drawn one by one nearly every pixel would switch the
+  // fill colour (a CSS parse each time). Particles queue their pixels per
+  // colour and each colour is flushed once, as the same integer g.rect calls
+  // (deterministic: colours flush in first-use order).
+  // ------------------------------------------------------------------
+  const QK = [];
+  const QM = new Map();
+  const Q = {
+    rect(x, y, w, h, c) {
+      let a = QM.get(c);
+      if (!a) {
+        a = [];
+        QM.set(c, a);
+      }
+      if (!a.length) QK.push(c);
+      a.push(x, y, w, h);
+    },
+  };
+  function flushQ(g) {
+    for (let k = 0; k < QK.length; k++) {
+      const c = QK[k];
+      const a = QM.get(c);
+      for (let i = 0; i < a.length; i += 4) g.rect(a[i], a[i + 1], a[i + 2], a[i + 3], c);
+      a.length = 0;
+    }
+    QK.length = 0;
+  }
+  SEA.Q = Q;
+  SEA.flushQ = flushQ;
+
   // seasonal layers (weather-seasons.js fills these hooks; read at draw time)
   const hook = (k) => (g, t) => {
     const f = SEA[k];
@@ -554,7 +588,9 @@
         z: 22,
         id: 'far-rain',
         draw(g, t) {
-          if (rainOn(t)) drawFar(g, t);
+          if (!rainOn(t)) return;
+          drawFar(Q, t);
+          flushQ(g);
         },
       },
       { layer: 'bg', z: 23, id: 'far-season', draw: hook('far') },
@@ -563,7 +599,9 @@
         z: 26,
         id: 'ripples',
         draw(g, t) {
-          if (rainOn(t)) drawRipples(g, t, anchors());
+          if (!rainOn(t)) return;
+          drawRipples(Q, t, anchors());
+          flushQ(g);
         },
       },
       {
@@ -573,8 +611,9 @@
         draw(g, t) {
           if (!rainOn(t)) return;
           const A = anchors();
-          drawGroundSplashes(g, t, A);
-          drawSurfaceSplashes(g, t, A);
+          drawGroundSplashes(Q, t, A);
+          drawSurfaceSplashes(Q, t, A);
+          flushQ(g);
         },
       },
       {
@@ -584,8 +623,9 @@
         draw(g, t) {
           if (!rainOn(t)) return;
           const A = anchors();
-          drawMid(g, t, A);
-          drawDrips(g, t, A);
+          drawMid(Q, t, A);
+          drawDrips(Q, t, A);
+          flushQ(g);
         },
       },
       { layer: 'fx', z: 43, id: 'mid-season', draw: hook('mid') },
@@ -594,7 +634,9 @@
         z: 66,
         id: 'near-rain',
         draw(g, t) {
-          if (rainOn(t)) drawNear(g, t);
+          if (!rainOn(t)) return;
+          drawNear(Q, t);
+          flushQ(g);
         },
       },
       { layer: 'fx', z: 67, id: 'near-season', draw: hook('near') },
