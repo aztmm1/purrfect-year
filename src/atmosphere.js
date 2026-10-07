@@ -319,8 +319,11 @@
   /**
    * Bake one dithered texture per light level (or a single cold one).
    * Colour cols[1] (core) where bayer < (d - core) * 1.6, cols[0] where bayer < d.
+   * tonal: a glow instead of a dot screen. Every pixel takes the haze colour
+   * (cols[1] past the core, with a short dithered seam) at an opacity of d in
+   * flat 1/16 steps, dithered only between neighbouring steps.
    */
-  function bakeTile(tw, h, dens, cols, lit, core, levels) {
+  function bakeTile(tw, h, dens, cols, lit, core, levels, tonal) {
     const sets = cols.map((c) => (lit ? litSet(c, levels) : [c]).map(rgba32));
     const nv = lit ? LEVEL_L.length : 1;
     const D = new Float32Array(tw * h);
@@ -329,6 +332,26 @@
     for (let v = 0; v < nv; v++) {
       const c0 = sets[0][v];
       const c1 = sets[1][v];
+      if (tonal) {
+        out.push(
+          bakePixels(tw, h, (u32) => {
+            for (let y = 0; y < h; y++)
+              for (let x = 0; x < tw; x++) {
+                const p = y * tw + x;
+                const d = Math.min(1, D[p]);
+                if (d <= 0) continue;
+                const b = HD.bayer(x, y);
+                const f = d * 16;
+                const lo = Math.floor(f);
+                const lvl = lo + (b < f - lo ? 1 : 0);
+                if (lvl <= 0) continue;
+                const c = d > core + (b - 0.5) * 0.16 ? c1 : c0;
+                u32[p] = ((c & 0xffffff) | (Math.round((255 * lvl) / 16) << 24)) >>> 0;
+              }
+          }),
+        );
+        continue;
+      }
       out.push(
         bakePixels(tw, h, (u32) => {
           for (let y = 0; y < h; y++)
