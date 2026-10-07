@@ -13,8 +13,14 @@
  *   drawInside / drawFront      animated bits (flames, bulbs, lanterns, diyas)
  *   lights(t, L)                every decoration light (aggregated)
  *
- * The black cat is drawn by house.js and is identical in every edition;
- * nothing here paints over its window.
+ * The black cat is drawn by house.js and is identical in every edition it
+ * sits in. Only the Summer Story travel chapters (tag `cat-away`) leave its
+ * window empty: house.js skips the cat and paintAway() puts a potted geranium
+ * and a little note on the sill instead.
+ *
+ * Anything drawFront() lays over lit glass or the door's light leaks goes
+ * through frontSprite()/frontPx(), which clear the emissive mask under it, so
+ * the engine relights that cloth or iron like the rest of it.
  */
 (function () {
   'use strict';
@@ -1607,12 +1613,13 @@
       [3, 2, 0],
     ];
     for (const [x, y, big] of bl) {
-      // deep red petals (the window light relights them crimson), a paler heart
-      putW(I, w, x, y, PLM[4]);
-      putW(I, w, x - 1, y, PLM[2]);
-      putW(I, w, x + 1, y, PLM[2]);
-      putW(I, w, x, y - 1, PLM[2]);
-      if (big) putW(I, w, x, y + 1, PLM[1]);
+      // (this overlay sits on emissive glass and is never relit: these are the
+      // colours you see, pink petals with a pale heart)
+      putW(I, w, x, y, PLM[5]);
+      putW(I, w, x - 1, y, PLM[4]);
+      putW(I, w, x + 1, y, PLM[4]);
+      putW(I, w, x, y - 1, PLM[4]);
+      if (big) putW(I, w, x, y + 1, PLM[3]);
     }
     // the vase: a slim meiping, dark against the glow
     rowsW(I, w, ['.nn.', 'vvvv', 'vVvv', 'vVvv', 'vvvv', '.vv.', 'vvvv'], 11, 15, { n: A[0], v: A[0], V: A[1] });

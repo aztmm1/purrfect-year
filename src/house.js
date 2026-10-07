@@ -1151,6 +1151,11 @@
   });
   const DOORC = { seed: 51, speed: 0.8, amp: 0.8 };
   const LANC = { seed: 52, speed: 1.1, amp: 0.9 };
+  // Summer Story chapters run the house clock 0.05 s ahead (as props does):
+  // every 6-12 fps cadence (window flicker, flags, TV, sign) is then phased
+  // half a frame off the loop seam, so LOOP -> 0 falls inside a held frame.
+  // Still a pure, loop-safe f(t); the other editions keep t untouched.
+  const storyClock = (t) => (HD.edition.story ? t + 0.05 : t);
 
   HD.module('house', {
     init() {
@@ -1214,20 +1219,24 @@
     },
 
     lights(t, L) {
+      t = storyClock(t);
       const SE = HD.edition.id === 'halloween' ? null : KIT.seasons;
       for (const win of WINS) {
         const c = SE ? SE.winCfg(win) : win.c;
         const f = wflick(t, c);
-        const k = (0.86 + 0.28 * f) * (SE ? SE.winBoost(win, t) : 1);
+        const kf = 0.86 + 0.28 * f;
+        const k = kf * (SE ? SE.winBoost(win, t) : 1);
         L.add({ x: Math.round(win.cx), y: Math.round(win.cy), r: c.light.r, color: c.light.col || HD.LIGHT.candle, i: c.light.i * k, halo: { r: Math.round(Math.max(win.gw, win.gh) * 0.75), a: c.halo } });
         if (c.spill) {
+          // (a seasonal spill may carry its own colour, and a `calm` one
+          // ignores the window's seasonal boost: it keeps only the flicker)
           L.add({
             x: Math.round(win.cx),
             y: 213,
             r: c.spill.r,
             ry: c.spill.ry,
-            color: c.light.col || HD.LIGHT.candle,
-            i: c.spill.i * k,
+            color: c.spill.col || c.light.col || HD.LIGHT.candle,
+            i: c.spill.i * (c.spill.calm ? kf : k),
             bands: 4,
             clip: { x0: 0, y0: 206, x1: 479, y1: 240 },
           });
@@ -1250,6 +1259,7 @@
         layer: 'scene',
         z: 22,
         draw(g, t) {
+          t = storyClock(t);
           const ed = HD.edition;
           const SE = ed.id === 'halloween' ? null : KIT.seasons;
           g.sprite(houseArt(), BX, BY);
