@@ -259,7 +259,7 @@
       // the triple after each anniversary heart: zone, x, height 0..1, colour
       triple: [
         [0, 34, 0.55, 'red'],
-        [0, 88, 0.12, 'white'],
+        [0, 95, 0.12, 'white'], // right of the spire's needle, short of the blue
         [0, 138, 0.45, 'blue'],
       ],
       tripleFallback: [66.5, 186.5],

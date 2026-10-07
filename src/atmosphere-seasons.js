@@ -69,7 +69,7 @@
       h: o.h,
       k: o.k || 1,
       ly: o.ly === undefined ? o.y0 + (o.h >> 1) : o.ly,
-      tex: A().bakeTile(o.tw, o.h, o.dens, o.cols, !!o.lit, o.core === undefined ? 0.45 : o.core, o.levels),
+      tex: A().bakeTile(o.tw, o.h, o.dens, o.cols, !!o.lit, o.core === undefined ? 0.45 : o.core, o.levels, !!o.tonal),
       alpha: o.alpha,
       lb: o.lb, // light-level boost when picking the lit variant
       mask: o.mask || ((o.holes && o.holes.length) || o.keeps ? A().bakeMask(o.y0, o.h, o.holes || [], o.keeps, o.x0 || 0, o.w || W) : null),
@@ -131,6 +131,7 @@
         cols: o.cols,
         alpha: o.alpha,
         core: o.core === undefined ? 0.5 : o.core,
+        tonal: o.tonal,
         dens: bankDens(240, o.seed || 111, { c: o.c || 21, up: o.up || 5, down: o.down || 3.5, thick: o.thick, gain: o.gain || 0.95, floor: o.floor === undefined ? 0.25 : o.floor, lo: o.lo, hi: o.hi }),
       }),
       band({
@@ -141,6 +142,7 @@
         cols: o.cols2 || o.cols,
         alpha: o.alpha2 === undefined ? o.alpha * 0.8 : o.alpha2,
         core: 0.45,
+        tonal: o.tonal,
         dens: bankDens(160, (o.seed || 111) + 10, { c: 11, up: 3.5, down: 3.5, thick: 0, wob: 5, gain: o.gain2 || 0.8, floor: 0, lo: 0.35, hi: 0.9 }),
       }),
     ];
@@ -171,6 +173,7 @@
       keeps: o.keeps,
       levels: o.levels,
       lb: o.lb,
+      tonal: o.tonal,
       dens: (x, y) => {
         const c = (o.c || 8) + (yc[x] - 0.5) * (o.wob === undefined ? 5 : o.wob);
         const q = (y - c) / (y < c ? o.up || 3 : o.down || 5.5);
@@ -1200,6 +1203,7 @@
             up: city.up,
             gain: city.gain || 0.85,
             floor: city.floor === undefined ? 0.25 : city.floor,
+            tonal: true,
           })
         : [],
       // warm low summer haze lying on the meadow (behind the family), its
