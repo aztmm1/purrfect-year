@@ -627,10 +627,21 @@
   };
   HD.lights = LightAPI;
 
+  /** time-of-day lighting of the current edition (night unless editions.js says otherwise) */
+  function lighting() {
+    return HD.light ? HD.light() : null;
+  }
+
   function buildLightmap() {
-    LR.fill(0);
-    LG.fill(0);
-    LB.fill(0);
+    // daylight: a uniform fill reveals the true colours hidden in the night
+    // palette (night = albedo * AMBIENT, so a fill of 1 - AMBIENT is plain
+    // daylight); placed lights are dimmed, as lamps barely show by day
+    const lt = lighting();
+    const fill = lt && lt.day > 0 ? lt.fill : null;
+    const lampDim = lt ? lt.dim : 1;
+    LR.fill(fill ? fill[0] : 0);
+    LG.fill(fill ? fill[1] : 0);
+    LB.fill(fill ? fill[2] : 0);
     for (const l of lights) {
       const rx = Math.max(1, Math.round(l.r));
       const ry = Math.max(1, Math.round(l.ry || l.r));
@@ -638,9 +649,10 @@
       const cx = Math.round(l.x);
       const cy = Math.round(l.y);
       const col = l.color || [1, 0.6, 0.3];
-      const kr = col[0] * l.i;
-      const kg = col[1] * l.i;
-      const kb = col[2] * l.i;
+      const li = l.day || lampDim === 1 ? l.i : l.i * lampDim; // l.day: keep full strength by day
+      const kr = col[0] * li;
+      const kg = col[1] * li;
+      const kb = col[2] * li;
       let x0 = cx - rx;
       let y0 = cy - ry;
       let x1 = cx + rx;
@@ -766,6 +778,7 @@
   function reflections(g, t) {
     const pud = HD.layout && HD.layout.puddles;
     if (!pud || !pud.length) return;
+    if (HD.edition && HD.edition.puddles === false) return; // dry-weather editions
     for (let pi = 0; pi < pud.length; pi++) {
       const P = pud[pi];
       const cx = Math.round(P.x);
@@ -812,10 +825,13 @@
   }
 
   function halos(g) {
+    const lt = lighting();
+    const dim = lt ? lt.dim : 1;
     for (const l of lights) {
       if (!l.halo) continue;
       const h = l.halo;
-      HD.glow(g, h.x === undefined ? l.x : h.x, h.y === undefined ? l.y : h.y, h.r, h.color || l.color, (h.a || 0.2) * Math.min(1.5, l.i));
+      const k = l.day || dim === 1 ? 1 : dim * dim; // halos fade faster than the light by day
+      HD.glow(g, h.x === undefined ? l.x : h.x, h.y === undefined ? l.y : h.y, h.r, h.color || l.color, (h.a || 0.2) * Math.min(1.5, l.i) * k);
     }
   }
 

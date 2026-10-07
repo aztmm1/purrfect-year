@@ -1,6 +1,6 @@
 /*
- * Editions — the Rainy Hollow series. Same cottage, same black cat in the
- * upper-right window, eight nights across the year.
+ * Editions — the Purrfect Year series. Same cottage, same black cat in the
+ * upper-right window, fourteen entries across 2026 on a Boston calendar.
  *
  * Every module reads HD.edition at DRAW time (never only at init), so the page
  * can switch editions live. Cache edition-specific art with HD.perEdition().
@@ -14,7 +14,9 @@
   const HD = (window.HD = window.HD || {});
 
   // Field reference (what each module switches on):
-  //  sky      'overcast' | 'broken' | 'clear'        (bg)
+  //  light    'night' (default) | 'dusk' | 'golden' | 'day'  time of day; see HD.light() below
+  //  puddles  false = dry ground, no puddle reflections (engine)
+  //  sky      'overcast' | 'broken' | 'clear' | 'fair' | 'dusk'  (bg; by day 'clear' is blue sky, 'fair' adds cumulus)
   //  stars    0..1 density of visible stars           (bg)
   //  moon     'full' | 'harvest' | 'crescent' | 'none'(bg)
   //  weather  { rain, snow, leaves, petals, fireflies }  intensities 0..1 (weather)
@@ -29,7 +31,7 @@
       name: 'Red Lanterns',
       festival: 'Lunar New Year',
       season: 'winter',
-      when: 'late January - February',
+      when: 'late January - mid March',
       dates: [[1, 20], [3, 14]],
       blurb: 'Red lanterns glow in the snowy tree, plum blossoms bloom in the window and distant fireworks welcome the new year.',
       sky: 'clear',
@@ -45,16 +47,17 @@
     },
     {
       id: 'spring',
-      name: 'Blossom Rain',
+      name: 'Blossom Morning',
       festival: 'Easter',
       season: 'spring',
-      when: 'March - April',
+      when: 'mid March - May',
       dates: [[3, 15], [5, 20]],
-      blurb: 'A soft spring rain shakes petals from the cherry tree onto hidden painted eggs.',
-      sky: 'broken',
-      stars: 0.2,
-      moon: 'crescent',
-      weather: { rain: 0.55, snow: 0, leaves: 0, petals: 0.8, fireflies: 0 },
+      blurb: 'A sunny Easter morning: a breeze shakes petals from the cherry tree onto hidden painted eggs.',
+      light: 'day',
+      sky: 'fair',
+      stars: 0,
+      moon: 'none',
+      weather: { rain: 0, snow: 0, leaves: 0, petals: 0.8, fireflies: 0 },
       ground: 'spring',
       tree: 'blossom',
       fire: 'none',
@@ -66,11 +69,12 @@
       name: 'Firefly Midsummer',
       festival: 'Midsummer',
       season: 'summer',
-      when: 'June - August',
+      when: 'late May - June 10',
       dates: [[5, 21], [6, 10]],
-      blurb: 'The shortest night: a midsummer bonfire, paper lanterns and a meadow full of fireflies.',
+      blurb: 'The shortest night: a midsummer bonfire at late dusk, paper lanterns and a meadow full of fireflies.',
+      light: 'dusk',
       sky: 'clear',
-      stars: 1,
+      stars: 0.6,
       moon: 'full',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 1 },
       ground: 'summer',
@@ -82,7 +86,7 @@
     // ---- Summer Story chapters (SUMMER.md) ----
     {
       id: 'match', name: 'Match Night', festival: 'Football summer', season: 'summer', story: true,
-      when: 'June - July', dates: [[6, 11], [7, 3]],
+      when: 'June 11 - July 3', dates: [[6, 11], [7, 3]],
       blurb: 'Flags out for the big match: a glowing TV, a cozy pub sign and a cheer when the goal goes in.',
       sky: 'clear', stars: 0.6, moon: 'crescent', backdrop: 'boston',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.6 },
@@ -91,7 +95,7 @@
     },
     {
       id: 'nyc', name: 'Anniversary in New York', festival: 'Fourth of July', season: 'summer', story: true,
-      when: 'July 4', dates: [[7, 4], [7, 7]],
+      when: 'July 4 - 7', dates: [[7, 4], [7, 7]],
       blurb: 'An anniversary on the Fourth: pizza, lemonade and fireworks over the New York skyline.',
       sky: 'clear', stars: 0.4, moon: 'none', backdrop: 'nyc',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.3 },
@@ -101,50 +105,51 @@
     },
     {
       id: 'la', name: 'West Coast', festival: 'Summer trip', season: 'summer', story: true,
-      when: 'July', dates: [[7, 8], [7, 15]],
-      blurb: 'A warm Los Angeles night under plaza string lights and palm trees.',
-      sky: 'clear', stars: 0.3, moon: 'crescent', backdrop: 'la',
+      when: 'July 8 - 15', dates: [[7, 8], [7, 15]],
+      blurb: 'A hot, dry Los Angeles afternoon under palm trees and a clear blue sky.',
+      light: 'day', sky: 'clear', stars: 0, moon: 'none', backdrop: 'la', puddles: false,
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0 },
       ground: 'summer', tree: 'summer', fire: 'none', fireworks: 0,
       tags: ['cat-away', 'plaza-lights', 'patio-heater', 'garden', 'family-trip', 'secret-ant-colony'],
     },
     {
       id: 'sandiego', name: 'Zoo, Bricks & Bay', festival: 'Summer trip', season: 'summer', story: true,
-      when: 'July', dates: [[7, 16], [7, 31]],
-      blurb: 'Dusk on the bay, giraffes over the fence and a toy-brick castle, with a little rider on your shoulders.',
-      sky: 'dusk', stars: 0.2, moon: 'crescent', backdrop: 'sandiego',
+      when: 'July 16 - 31', dates: [[7, 16], [7, 31]],
+      blurb: 'A sunny day by the bay: giraffes over the fence, a toy-brick castle and a little rider on your shoulders.',
+      light: 'day', sky: 'fair', stars: 0, moon: 'none', backdrop: 'sandiego',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0 },
       ground: 'summer', tree: 'summer', fire: 'none', fireworks: 0,
       tags: ['cat-away', 'giraffes', 'brick-castle', 'brick-cat', 'boat', 'garden', 'family-trip', 'shoulder-ride', 'secret-ant-colony'],
     },
     {
       id: 'dc', name: 'Birthday in DC', festival: 'A birthday', season: 'summer', story: true,
-      when: 'August', dates: [[8, 1], [8, 24]],
-      blurb: 'A birthday cake under the Capitol dome: candles, balloons and the whole family.',
-      sky: 'clear', stars: 0.6, moon: 'full', backdrop: 'dc',
+      when: 'August 1 - 24', dates: [[8, 1], [8, 24]],
+      blurb: 'A warm summer evening and a birthday cake under the Capitol dome: candles, balloons and the whole family.',
+      light: 'dusk', sky: 'clear', stars: 0.4, moon: 'full', backdrop: 'dc',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.7 },
       ground: 'summer', tree: 'summer', fire: 'none', fireworks: 0,
       tags: ['cat-away', 'birthday-table', 'balloons', 'bunting-party', 'garden', 'family-birthday', 'secret-ant-colony'],
     },
     {
       id: 'home', name: 'Home to Boston', festival: 'End of summer', season: 'summer', story: true,
-      when: 'late August', dates: [[8, 25], [8, 31]],
+      when: 'August 25 - 31', dates: [[8, 25], [8, 31]],
       blurb: 'Back home under the Boston skyline as the summer sky turns pink.',
-      sky: 'dusk', stars: 0.3, moon: 'crescent', backdrop: 'boston',
+      light: 'dusk', sky: 'dusk', stars: 0.3, moon: 'crescent', backdrop: 'boston',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.8 },
       ground: 'summer', tree: 'summer', fire: 'none', fireworks: 0,
       tags: ['us-flag-pole', 'window-boxes', 'garden', 'family-home', 'secret-ant-colony'],
     },
     {
       id: 'harvest',
-      name: 'Harvest Moon',
+      name: 'Golden Harvest',
       festival: 'Harvest, Mid-Autumn & Thanksgiving',
       season: 'autumn',
-      when: 'September',
+      when: 'September and Thanksgiving week',
       dates: [[[9, 1], [9, 30]], [[11, 21], [11, 30]]],
-      blurb: 'A huge golden moon over hay bales, lanterns and leaves tumbling on the breeze.',
+      blurb: 'A golden late afternoon: the harvest moon rising over hay bales, lanterns and leaves tumbling on the breeze.',
+      light: 'golden',
       sky: 'broken',
-      stars: 0.5,
+      stars: 0,
       moon: 'harvest',
       weather: { rain: 0, snow: 0, leaves: 0.8, petals: 0, fireflies: 0 },
       ground: 'leafy',
@@ -176,7 +181,7 @@
       name: 'Festival of Lights',
       festival: 'Diwali',
       season: 'autumn',
-      when: 'October - November',
+      when: 'November 1 - 20',
       dates: [[11, 1], [11, 20]],
       blurb: 'Rows of little clay lamps, marigold garlands, a rangoli by the door and fireworks far away.',
       sky: 'clear',
@@ -195,7 +200,7 @@
       name: 'Snowed In',
       festival: 'Christmas & Hanukkah',
       season: 'winter',
-      when: 'December',
+      when: 'December 1 - 30',
       dates: [[12, 1], [12, 30]],
       blurb: 'Deep snow, icicles and twinkling lights, with a menorah and a decorated tree in the windows.',
       sky: 'overcast',
@@ -213,7 +218,7 @@
       name: 'Midnight Fireworks',
       festival: "New Year's Eve",
       season: 'winter',
-      when: 'December 31',
+      when: 'New Year’s Eve - January 19',
       dates: [[12, 31], [1, 19]],
       blurb: 'Fireworks burst over the snowy hills while sparklers fizz and the fire pit keeps everyone warm.',
       sky: 'clear',
@@ -229,6 +234,23 @@
     },
   ];
   for (const e of EDITIONS) e.tagSet = new Set(e.tags);
+
+  /*
+   * Time of day. day: 0 night .. 1 full daylight (modules switch window glow,
+   * lamps, fireflies, sky and shadows on it). fill: the uniform daylight added
+   * to the lightmap (1 - AMBIENT reveals the true albedo; golden is warmer and
+   * lower). dim: how strongly placed lights still show (1 at night). sun: where
+   * the sun is (bg draws it; shadows fall away from it).
+   */
+  const LIGHTING = {
+    night: { mode: 'night', day: 0, fill: [0, 0, 0], dim: 1, sun: null },
+    dusk: { mode: 'dusk', day: 0.3, fill: [0.2, 0.15, 0.17], dim: 0.9, sun: { x: 40, y: 196 } },
+    golden: { mode: 'golden', day: 0.75, fill: [0.66, 0.5, 0.32], dim: 0.5, sun: { x: 452, y: 128 } },
+    day: { mode: 'day', day: 1, fill: [0.72, 0.66, 0.5], dim: 0.25, sun: { x: 404, y: 40 } },
+  };
+  HD.LIGHTING = LIGHTING;
+  /** lighting of the current edition */
+  HD.light = () => LIGHTING[HD.edition.light || 'night'] || LIGHTING.night;
   HD.EDITIONS = EDITIONS;
   const byId = new Map(EDITIONS.map((e) => [e.id, e]));
   HD.editionById = (id) => byId.get(id);
