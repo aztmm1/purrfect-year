@@ -1,8 +1,10 @@
 # Purrfect Year
 
-![Purrfect Year: a black cat in his window above a city street](docs/og.png)
+[![Purrfect Year: a black cat in his window above a city street](docs/og.png)](https://youtu.be/6n0dwj57O9g)
 
 An animated pixel-art diary of one year, told in 16 entries from Diwali 2025 to Halloween 2026.
+
+▶ **Watch the two-minute film, *Paws and Seasons*, on YouTube (4K):** https://youtu.be/6n0dwj57O9g
 
 One black cat appears in every entry, and he never changes. Everything around
 him moves on. The places change (Boston, New York, Los Angeles, San Diego and
