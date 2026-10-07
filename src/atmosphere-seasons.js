@@ -569,54 +569,72 @@
   // burst smoke (Summer Story nyc, and the match goal cheer): every firework
   // shell of the fire module's show leaves a soft cloud of
   // smoke where it burst. It forms as the stars fade, swells, drifts
-  // downwind and thins out over ~20 s, so the sky high over the skyline
-  // carries a faint drifting haze only after the bursts. The show's shell
-  // list is fixed per edition, so each cloud is a pure function of t.
+  // downwind and thins out within ~12-15 s, so the sky high over the skyline
+  // carries a faint drifting haze only after the bursts and clears again in
+  // the gaps of the show. The show's shell list is fixed per edition, so each
+  // cloud is a pure function of t.
   // A burst flashing nearby relights the smoke in its colour for a moment.
   // ---------------------------------------------------------------------
   function burstSmoke(o) {
-    const LIFE = o.life || 20;
+    const LIFE = o.life || 15; // big, near shells
+    const LIFE_S = o.lifeSmall || 12; // small and far shells clear sooner
     const DRIFT = o.drift || 1.6; // px/s downwind, high up
     const ALPHA = o.alpha || 0.4;
-    // each cloud is baked at a few moments of its life (seconds after the
+    // each cloud is drawn at a few moments of its life (seconds after the
     // burst) and cross-faded between them; its fade is the composite alpha,
-    // so the dither never crawls and a frame costs a few drawImage calls
-    const STAGE_T = [1.4, 6, 13];
+    // so the dither never crawls and a frame costs a few drawImage calls.
+    // Clouds share NL puff layouts per 4px radius bucket: every sprite the
+    // show needs is drawn once, when the show is first seen, never mid-loop.
+    const STAGE_T = [1.4, 6, 11];
+    const REF_LIFE = 15; // growth reference, so a sprite does not depend on its shell's life
+    const NL = 6;
     const c0 = A().rgba32(o.cols[0]);
     const c1 = A().rgba32(o.cols[1]);
+    // the lower puffs catch the city's glow from below
+    const w0 = o.warm ? A().rgba32(o.warm[0]) : c0;
+    const w1 = o.warm ? A().rgba32(o.warm[1]) : c1;
     const CORE = 0.55;
+    const LAYOUTS = [];
+    for (let l = 0; l < NL; l++) {
+      const rng = HD.rng(0x51a7 + l * 7919);
+      const n = l % 3 === 2 ? 6 : 5;
+      const puffs = [];
+      for (let k = 0; k < n; k++) {
+        const th = ((k + 0.25 + 0.5 * rng()) / n) * TAU;
+        const rho = 0.28 + 0.38 * rng();
+        puffs.push({ dx: Math.cos(th) * rho, dy: Math.sin(th) * rho * 0.85, r: 0.2 + 0.1 * rng(), a: 0.75 + 0.35 * rng() });
+      }
+      LAYOUTS.push(puffs);
+    }
+    const sprites = new Map(); // (layout, radius bucket) -> [stage sprites]
     const states = new WeakMap(); // show -> per-shell state
     function stateFor(s) {
       let st = states.get(s);
       if (st) return st;
       st = s.list.map((sh) => {
-        const rng = HD.rng(sh.seed ^ 0x51a7);
-        const n = sh.R > 26 ? 6 : 5;
-        const puffs = [];
-        for (let k = 0; k < n; k++) {
-          const th = ((k + 0.25 + 0.5 * rng()) / n) * TAU;
-          const rho = 0.28 + 0.38 * rng();
-          puffs.push({ dx: Math.cos(th) * rho, dy: Math.sin(th) * rho * 0.85, r: 0.2 + 0.1 * rng(), a: 0.75 + 0.35 * rng() });
+        const small = sh.far || sh.R < 15;
+        const rb = Math.max(8, Math.round(sh.R / 4) * 4);
+        const key = (((sh.seed >>> 0) % NL) << 8) | rb;
+        let stages = sprites.get(key);
+        if (!stages) {
+          stages = STAGE_T.map((d) => bakeStage(LAYOUTS[key >> 8], rb, d));
+          sprites.set(key, stages);
         }
         // willows and crackles leave more smoke, far shells less
         const k = (sh.type === 'willow' ? 1.15 : sh.type === 'crackle' ? 1.1 : 1) * (sh.far ? 0.55 : 1);
-        return { sh, puffs, k, sag: sh.type === 'willow' ? 0.32 : 0.14, stages: [] };
+        return { sh, k, life: small ? LIFE_S : LIFE, sag: sh.type === 'willow' ? 0.32 : 0.14, stages, bx: 0, by: 0, env: 0 };
       });
       states.set(s, st);
       return st;
     }
-    /** bake stage i of a cloud: puffs relative to the drifting burst centre */
-    function stage(c, i) {
-      let sg = c.stages[i];
-      if (sg) return sg;
-      const d = STAGE_T[i];
-      const R = c.sh.R;
-      const grow = 0.55 + 0.45 * sm(0, 1.6, d) + 0.5 * (d / LIFE);
-      const ps = c.puffs.map((p) => ({
+    /** draw one stage of a cloud: puffs relative to the drifting burst centre */
+    function bakeStage(layout, R, d) {
+      const grow = 0.55 + 0.45 * sm(0, 1.6, d) + 0.5 * (d / REF_LIFE);
+      const ps = layout.map((p) => ({
         // upper puffs ride a slightly faster wind (gentle shear)
         x: p.dx * R * grow - 0.35 * p.dy * DRIFT * d,
         y: p.dy * R * grow,
-        rx: R * p.r * (1 + 0.9 * (d / LIFE)) * 1.25 + 2,
+        rx: R * p.r * (1 + 0.9 * (d / REF_LIFE)) * 1.25 + 2,
         a: p.a * 0.62,
       }));
       let x0 = Infinity;
@@ -653,19 +671,26 @@
           }
         }
       }
+      // the warm underside: a dithered blend into the glow tones over the
+      // lower part of the cloud (its own Bayer phase, so it never lines up
+      // with the density dither)
+      const wy0 = 0.05 * R;
+      const wy1 = 0.7 * R * grow;
       const cv = A().bakePixels(w, h, (u32) => {
-        for (let y = 0; y < h; y++)
+        for (let y = 0; y < h; y++) {
+          const wk = 0.85 * sm(wy0, wy1, y + oy);
           for (let x = 0; x < w; x++) {
             let dd = D[y * w + x];
             if (dd <= 0.02) continue;
             dd = Math.min(1, dd);
             const b = HD.bayer(x, y); // anchored to the cloud: it travels with it
-            if (b < (dd - CORE) * 1.6) u32[y * w + x] = c1;
-            else if (b < dd) u32[y * w + x] = c0;
+            const warm = wk > 0 && HD.bayer(x + 3, y + 5) < wk;
+            if (b < (dd - CORE) * 1.6) u32[y * w + x] = warm ? w1 : c1;
+            else if (b < dd) u32[y * w + x] = warm ? w0 : c0;
           }
+        }
       });
-      sg = c.stages[i] = { cv, ox, oy, w, h };
-      return sg;
+      return { cv, ox, oy, w, h };
     }
     /** the stage sprite recoloured in a burst's light (for the additive relight) */
     let scratch = null;
@@ -693,6 +718,7 @@
       return (tb < 0.1 ? tb / 0.1 : Math.exp(-(tb - 0.1) / 0.65)) * (sh.far ? 0.55 : 1);
     };
     const flashes = [];
+    const live = [];
     // the title-safe sky stays calm: smoke fades out (dithered) as it nears it
     const TSF = 12; // fade width
     const TSX = LY.titleSafe.x1 + 2;
@@ -747,22 +773,41 @@
       }
       const ctx = g.ctx;
       const ga = ctx.globalAlpha;
+      // live clouds: where they are and how much smoke each still holds
+      live.length = 0;
       for (const c of st) {
         const sh = c.sh;
         let d = tt - (sh.t0 + sh.rise);
         d -= Math.floor(d / L) * L; // seconds since the burst
-        if (d >= LIFE) continue;
-        const env = sm(0.5, 2.4, d) * Math.pow(1 - sm(4, LIFE, d), 1.3) * c.k;
-        if (env <= 0.02) continue;
+        if (d >= c.life) continue;
+        const env = sm(0.5, 2.4, d) * Math.pow(1 - sm(2.5, c.life, d), 1.5);
+        if (env * c.k <= 0.02) continue;
         // the whole cloud drifts downwind and sinks a little
-        const bx = Math.round(sh.bx + DRIFT * d);
-        const by = Math.round(sh.by + c.sag * sh.R * sm(0, 3, d) + 0.12 * d);
+        c.bx = Math.round(sh.bx + DRIFT * d);
+        c.by = Math.round(sh.by + c.sag * sh.R * sm(0, 3, d) + 0.12 * d);
+        c.env = env;
+        c.d = d;
+        live.push(c);
+      }
+      for (const c of live) {
+        // overlapping clouds do not stack into a bank: each one thins by
+        // 1 / sqrt(the smoke around it), weighted by the neighbours' own fade
+        let n = 1;
+        for (const q of live) {
+          if (q === c) continue;
+          const dist = Math.hypot(q.bx - c.bx, q.by - c.by);
+          if (dist < 44) n += q.env * (1 - sm(28, 44, dist));
+        }
+        const env = (c.env * c.k) / Math.sqrt(n);
+        const d = c.d;
+        const bx = c.bx;
+        const by = c.by;
         let i = 0;
         while (i < STAGE_T.length - 1 && d >= STAGE_T[i + 1]) i++;
         const w = i < STAGE_T.length - 1 ? sm(STAGE_T[i], STAGE_T[i + 1], d) : 0;
         const a = ALPHA * env;
-        const s0 = stage(c, i);
-        const s1 = w > 0 ? stage(c, i + 1) : null;
+        const s0 = c.stages[i];
+        const s1 = w > 0 ? c.stages[i + 1] : null;
         put(ctx, s0.cv, s0, bx, by, a * (1 - w));
         if (s1) put(ctx, s1.cv, s1, bx, by, a * w);
         // relight: the strongest flash near this cloud tints it for a moment
