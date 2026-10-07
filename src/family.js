@@ -1387,7 +1387,7 @@
   function drawSparkler(g, t, x0, y0, hx, hy, seed, big, IC) {
     g.line(x0, y0, hx, hy + 1, IC.stick);
     const e = g.em;
-    const fr = Math.floor(T.step(t, 12) * 12);
+    const fr = Math.floor(T.step(t, 12) * 12) % (12 * HD.LOOP);
     e.px(hx, hy, SPARK[0]);
     e.px(hx - 1, hy, SPARK[1]);
     e.px(hx + 1, hy, SPARK[1]);
@@ -1515,7 +1515,7 @@
     }
   }
   function sequins(g, t, c) {
-    const fr = Math.floor(T.step(t, 4) * 4);
+    const fr = Math.floor(T.step(t, 4) * 4) % (4 * HD.LOOP);
     for (let k = 0; k < 2; k++) {
       const dx = Math.floor(HD.hash(c.seed, fr, k, 3) * 7) - 3;
       const dy = Math.floor(HD.hash(c.seed, fr, k, 4) * 5);
@@ -1813,7 +1813,7 @@
     const cheering = goal >= 0 && goal < 0.65;
     // he stands on the door's threshold step, so the jersey clears the handrail
     const x = b.x1 - 11;
-    const base = b.slab - 3;
+    const base = b.slab - 5;
     const sp = Object.assign(C.you, { tailSide: -1 });
     // the step he stands on (the rail drawn back over it hides most of it)
     const stp = smallMap(HD.edition).IC;

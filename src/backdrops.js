@@ -1672,8 +1672,8 @@
   function carrier(B, x0, wl) {
     const lk = B.lk;
     // a darker grey than real life: the marine haze (atmosphere) veils it
-    const d = 0.08;
-    const grey = hx('#47515e');
+    const d = 0.04;
+    const grey = hx('#3b4451');
     const side = lk.sun === FL ? FL : FR;
     const L = 92;
     // the hull, its bow raking forward on the left
@@ -1752,18 +1752,31 @@
   // ==================================================================
   function herndon(B) {
     const lk = B.lk;
-    const tl = (x) => 168 + 4 * Math.sin(x / 11 + 0.4) + 3 * Math.sin(x / 5.3 + 1.2) + 4 * Math.sin(x / 31);
+    // two clearings in the tree line open a view of the far capital: the
+    // obelisk and the domed capitol on the left, the low white mansion on
+    // the right (drawn before the trees so the woods hide their feet)
+    const win = (x, c, hw) => (Math.abs(x - c) < hw ? 0.5 * (1 + Math.cos((Math.PI * (x - c)) / hw)) : 0);
+    const tl0 = (x) => 168 + 4 * Math.sin(x / 11 + 0.4) + 3 * Math.sin(x / 5.3 + 1.2) + 4 * Math.sin(x / 31);
+    const tl = (x) => {
+      const a = win(x, 118, 48);
+      const b = win(x, 352, 30);
+      const crowns = 3 * Math.abs(Math.sin(x * 0.55 + Math.sin(x * 0.21))); // rounded treetops, notched between
+      return tl0(x) * (1 - a - b) + (173 - crowns) * a + (181 - crowns) * b;
+    };
+    capital(B);
     B.ridge(0, W - 1, tl, lk.hz, M.treeD, 0.86);
-    for (let x = 2; x < W; x += 11) B.canopy(x + Math.floor(hash(x, 1, 61, B.gs) * 5), Math.round(tl(x)) + 1, [[0, 0, 4 + hash(x, 2, 61, B.gs) * 3], [5, 2, 4]], M.treeD, 0.82, { seed: x });
-    // utility poles and the sagging wires (behind the houses and the trees)
-    pole(B, 126, 108);
-    pole(B, 462, 104);
-    wires(B, [[0, 124], [126, 113], [462, 109], [W - 1, 118]]);
-    // the tall trees behind the house, both sides
-    B.canopy(152, 130, [[-12, 14, 10], [2, 0, 12], [14, 10, 10], [-2, 20, 11], [12, 24, 9], [-8, -6, 8], [8, -10, 8], [-16, 26, 7]], M.tree, 0.42, { seed: 5 });
-    B.canopy(330, 134, [[-6, 8, 11], [8, -2, 12], [16, 14, 9], [2, 22, 10], [-4, -8, 8], [14, -12, 7], [-10, 22, 7]], M.tree, 0.42, { seed: 9 });
-    victorian(B, 14, 106, 'gable');
-    victorian(B, 340, 406, 'hip');
+    for (let x = 2; x < W; x += 11) {
+      if ((x > 74 && x < 160) || (x > 326 && x < 388)) continue; // keep the clearings open
+      B.canopy(x + Math.floor(hash(x, 1, 61, B.gs) * 5), Math.round(tl(x)) + 1, [[0, 0, 4 + hash(x, 2, 61, B.gs) * 3], [5, 2, 4]], M.treeD, 0.82, { seed: x });
+    }
+    // utility poles and the sagging wires, strung high above the far view
+    pole(B, 66, 94);
+    pole(B, 462, 90);
+    wires(B, [[0, 104], [66, 99], [462, 95], [W - 1, 104]]);
+    // the tall tree behind the house on the left, tucked against its wall
+    B.canopy(166, 128, [[-4, 16, 9], [4, 0, 10], [12, 12, 9], [2, 24, 10], [-2, -8, 7], [10, -10, 7]], M.tree, 0.42, { seed: 5 });
+    victorian(B, -14, 60, 'gable');
+    victorian(B, 384, 452, 'hip');
     // a small dogwood at the far left
     trunk(B, 16, 150, 205, 0.2, 2);
     B.canopy(18, 140, [[-8, 2, 8], [6, -2, 9], [12, 8, 7], [-2, 10, 8]], mix(M.tree, hx('#6a8a4a'), 0.3), 0.2, { seed: 17 });
@@ -1776,6 +1789,136 @@
       [-44, 26, 11], [-38, 46, 10], [-14, 48, 12], [12, 50, 12], [38, 46, 12], [60, 36, 10],
       [-22, -28, 12], [8, -40, 13], [36, -36, 11], [54, -24, 10], [-12, 4, 12], [18, 4, 13], [44, 4, 11],
     ], M.tree, 0.12, { seed: 23 });
+  }
+
+  // ------------------------------------------------------------------
+  // the far capital beyond the woods: true shapes, softened by distance,
+  // floodlit white at dusk and night
+  // ------------------------------------------------------------------
+  const DC = { marble: hx('#e4ded2'), marble2: hx('#d6cdbd'), iron: hx('#e9e6de'), low: hx('#b9b2a6'), lowD: hx('#9a958e') };
+  const WHITE_FLOOD = hx('#fff4e0');
+  function capital(B) {
+    const d = 0.78;
+    // the flat, height-capped city: low blocks peeking over the woods
+    const blocks = [[62, 74, 160], [75, 84, 162], [85, 90, 158], [150, 158, 161]];
+    for (const [x0, x1, top] of blocks) {
+      const b = { id: ++B.ids, d, p: 0.45, cool: 0.15 };
+      for (let y = top; y <= 182; y++)
+        for (let x = x0; x <= x1; x++) {
+          let c = B.c(hash(x0, 3, 5, B.gs) < 0.5 ? DC.low : DC.lowD, y === top ? FT : FF, d, x, y);
+          if (y > top + 1 && (y - top) % 2 === 0 && (x - x0) % 2 === 1) c = B.lk.lit > 0 && hash(x, y, b.id, B.ls) < b.p * B.lk.lit ? mix(OFFICE, B.lk.fog, 0.25) : mix(c, [10, 12, 22], 0.18);
+          B.set(x, y, c);
+        }
+    }
+    monument(B, 97, 174, 48, d);
+    capitol(B, 129, 169, d);
+    whiteHouse(B, 353, 179, d);
+  }
+  /** the marble obelisk: 1:10, a faint tone change a quarter of the way up, the pyramidion and its red lights */
+  function monument(B, cx, base, h, d) {
+    const lk = B.lk;
+    const top = base - h;
+    const lit = lk.lit > 0;
+    for (let y = top; y <= base; y++) {
+      const v = (y - top) / h;
+      const py = y - top; // rows into the pyramidion
+      const hl = py < 1 ? 0 : py < 3 ? 1 : v < 0.55 ? 1 : 2;
+      const hr = py < 1 ? 0 : py < 3 ? 1 : v < 0.3 ? 1 : 2;
+      const mat = v > 0.73 ? DC.marble2 : DC.marble; // the lower courses are a shade warmer
+      for (let x = cx - hl; x <= cx + hr; x++) {
+        const face = py < 3 ? (x < cx ? FL : x > cx ? FR : FT) : x === cx - hl ? (lk.sun === FL ? FT : FL) : x === cx + hr ? (lk.sun === FR ? FT : FR) : FF;
+        let c = B.c(mat, face, d, x, y);
+        if (lit) c = B.flood(c, x === cx + hr ? 0.62 : 0.86, WHITE_FLOOD);
+        else if (lk.mode === 'golden' && x === cx - hl) c = mix(c, lk.rim, 0.3);
+        B.set(x, y, c);
+      }
+    }
+    if (lit) {
+      B.beacons.push({ x: cx, y: top + 1, per: 3, off: 0 });
+      B.glows.push({ x: cx, y: top + 16, r: 9, color: [1, 0.95, 0.85], a: 0.12 });
+    }
+  }
+  /** the capitol: two long wings, the pedimented centre, the drum colonnade, the ribbed dome, the lantern and the statue */
+  function capitol(B, cx, base, d) {
+    const lk = B.lk;
+    const lit = lk.lit > 0;
+    const put = (x, y, mat, face, k) => {
+      let c = B.c(mat, face, d, x, y);
+      if (lit) c = B.flood(c, k === undefined ? 0.8 : k, WHITE_FLOOD);
+      B.set(x, y, c);
+    };
+    const side = (x) => (x < cx ? (lk.sun === FL ? FF : FL) : lk.sun === FR ? FF : FR);
+    // the wings and their end pavilions
+    for (let x = cx - 19; x <= cx + 19; x++) {
+      const ax = Math.abs(x - cx);
+      const top = ax > 15 ? base - 7 : ax > 5 ? base - 6 : base - 8;
+      for (let y = top; y <= base; y++) {
+        const col = (y > top + 1 && x % 2 === 0) || (ax <= 5 && y > top + 2 && ax % 2 === 1);
+        put(x, y, DC.marble, y === top ? FT : col ? side(x) : FF, col ? 0.6 : 0.82);
+      }
+    }
+    // the central pediment
+    for (let k = 0; k < 3; k++) for (let x = cx - 4 + k * 2; x <= cx + 4 - k * 2; x++) put(x, base - 9 - k, DC.marble, FT);
+    // the drum: colonnade, attic
+    for (let y = base - 13; y <= base - 9; y++)
+      for (let x = cx - 6; x <= cx + 6; x++) put(x, y, DC.iron, y === base - 13 ? FT : (x - cx) % 2 === 0 ? FF : side(x), (x - cx) % 2 === 0 ? 0.9 : 0.55);
+    for (let y = base - 15; y <= base - 14; y++) for (let x = cx - 5; x <= cx + 5; x++) put(x, y, DC.iron, y === base - 15 ? FT : FF);
+    // the dome: banded and ribbed, lit side bright
+    const R = 5.5;
+    const H = 7;
+    for (let k = 0; k < H; k++) {
+      const y = base - 16 - k;
+      const hw = Math.round(R * Math.sqrt(1 - (k / H) ** 2));
+      for (let x = cx - hw; x <= cx + hw; x++) {
+        const ux = (x - cx) / (R + 0.5);
+        const lite = lk.sun === FL ? -ux : ux;
+        const face = lite > 0.35 ? FT : lite < -0.4 ? (lk.sun === FL ? FR : FL) : FF;
+        let k2 = 0.85;
+        if ((x - cx) % 3 === 0 && k < H - 1) k2 = 0.7; // the ribs
+        put(x, y, DC.iron, face, k2);
+      }
+    }
+    // the lantern and the statue
+    for (let y = base - 25; y <= base - 23; y++) for (let x = cx - 1; x <= cx + 1; x++) put(x, y, DC.iron, x === cx ? FF : side(x), 0.75);
+    put(cx, base - 26, DC.iron, FT, 0.6);
+    put(cx, base - 27, DC.marble2, FF, 0.5);
+    if (lit) B.glows.push({ x: cx, y: base - 16, r: 11, color: [1, 0.96, 0.86], a: 0.14 });
+  }
+  /** the mansion: a low white block, the pedimented portico with columns, the low side wings and chimneys */
+  function whiteHouse(B, cx, base, d) {
+    const lk = B.lk;
+    const lit = lk.lit > 0;
+    const put = (x, y, mat, face, k) => {
+      let c = B.c(mat, face, d, x, y);
+      if (lit) c = B.flood(c, k === undefined ? 0.9 : k, WHITE_FLOOD);
+      B.set(x, y, c);
+    };
+    const shade = lk.sun === FL ? FR : FL;
+    // the low colonnaded wings
+    for (let x = cx - 16; x <= cx + 16; x++) {
+      if (Math.abs(x - cx) <= 10) continue;
+      for (let y = base - 3; y <= base; y++) put(x, y, DC.marble, y === base - 3 ? FT : x % 2 ? FF : shade, 0.65);
+    }
+    // the main block: a balustrade, two rows of windows
+    for (let y = base - 9; y <= base; y++)
+      for (let x = cx - 10; x <= cx + 10; x++) {
+        const row = y === base - 6 || y === base - 2 || y === base - 3;
+        const win = row && (x - cx) % 2 !== 0 && Math.abs(x - cx) > 4 && Math.abs(x - cx) < 10;
+        if (win) {
+          const on = lit && hash(x, y >> 1, 91, B.ls) < 0.5 * lk.lit + 0.3;
+          B.set(x, y, on ? mix(WARM[1], lk.fog, 0.15) : B.c(M.glassD, FF, d, x, y));
+        } else put(x, y, DC.marble, y === base - 9 ? FT : y === base - 8 && x % 2 ? shade : FF, y === base - 8 ? 0.7 : 0.9);
+      }
+    // the portico: four tall columns under a pediment
+    for (let y = base - 7; y <= base; y++)
+      for (let x = cx - 4; x <= cx + 4; x++) {
+        const colm = (x - cx + 4) % 2 === 0 && Math.abs(x - cx) < 4 ? true : Math.abs(x - cx) === 4;
+        put(x, y, DC.iron, colm ? FF : shade, colm ? 1 : 0.35);
+      }
+    for (let k = 0; k < 3; k++) for (let x = cx - 5 + k * 2; x <= cx + 5 - k * 2; x++) put(x, base - 8 - k, DC.iron, k === 0 ? FT : FF);
+    // chimneys
+    for (const x of [cx - 8, cx - 7, cx + 7, cx + 8]) put(x, base - 10, DC.marble2, FF, 0.6);
+    if (lit) B.glows.push({ x: cx, y: base - 5, r: 9, color: [1, 0.95, 0.85], a: 0.12 });
   }
   function trunk(B, x, y0, y1, d, w) {
     const lk = B.lk;

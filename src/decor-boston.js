@@ -1367,7 +1367,9 @@
       pumpkin(L, ta + 21, pz.base - 2, 2.8, 2.2, { ramp: GOURD_GREEN, lobes: 3 });
       pumpkin(L, ta + 1, pz.base - 1, 3, 2.4, { ramp: PUMPKIN_GOLD, lobes: 4 });
       mumPlanter(S, pz.x1 + 14, pz.base - 1, 11, ['wine', 'cream', 'gold'], true);
-      mumPlanter(S, bed.x1 - 10, bed.cap, 9, ['gold', 'rust'], false);
+      // keep the cap planter clear of the fire pit's flames and smoke
+      const fpx = ed.fire === 'firepit' && pl.firepit ? pl.firepit.x : 9999;
+      mumPlanter(S, Math.abs(bed.x1 - 10 - fpx) < 16 ? fpx - 18 : bed.x1 - 10, bed.cap, 9, ['gold', 'rust'], false);
     }
 
     // ---- Christmas & Hanukkah: evergreen, coloured lights, a tree and a snowman
@@ -1608,11 +1610,11 @@
     // flags flutter on the shared breeze
     if (S.flags.length) {
       const br = HD.summer ? HD.summer.breeze(t) : 0;
-      const ts = T.step(t, 5);
+      const ts = T.step(t + 0.07, 5);
       const goal = HD.summer && HD.tag('goal-fireworks') ? HD.summer.goal(t) : -1;
       for (const f of S.flags) {
         const amt = Math.abs(br) + 0.25 * T.noise(t, 2.3, f.seed * 17) + (goal >= 0 ? 1 : 0);
-        const fi = amt < 0.3 ? 0 : Math.floor(T.phase(goal >= 0 ? T.step(t, 10) : ts, goal >= 0 ? 0.6 : 1.6, f.seed * 0.17) * 4);
+        const fi = amt < 0.3 ? 0 : Math.floor(T.phase(goal >= 0 ? T.step(t + 0.07, 10) : ts, goal >= 0 ? 0.6 : 1.6, f.seed * 0.17) * 4);
         gf.sprite(f.frames[fi], f.x, f.y);
       }
     }

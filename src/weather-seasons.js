@@ -1430,7 +1430,7 @@
   /** frame name: a flap burst cycles the wing frames at ~7 fps, else it glides */
   function gullFrame(t, flapping, seed) {
     if (!flapping) return 'glide';
-    return FLAP[(Math.floor(T.step(t, 7) * 7 + 1e-6) + seed * 2) & 3];
+    return FLAP[(Math.floor(T.step(t + 0.031, 7) * 7 + 1e-6) + seed * 2) & 3];
   }
   function drawGull(g, spr, kind, fr, x, y, left) {
     const f = spr[kind][fr];
@@ -1523,7 +1523,7 @@
   }
   const NEAR_GULL_P = 64;
   function gullsNear(g, t) {
-    const c = T.cycle(t, 0, NEAR_GULL_P, 9950);
+    const c = T.cycle(t, 0, NEAR_GULL_P, 9954);
     if (c.age > 0.24) return;
     const spr = gullSprites(MODE);
     const s = c.age / 0.24;

@@ -74,6 +74,12 @@
     for (let i = 0; i < RT.length; i++) RT[i] = rng();
   }
   const fh = (a, b, c) => RT[(Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) & 4095];
+  /** loop-safe frame index at fps (wraps every LOOP so t and t+LOOP agree) */
+  const tick = (t, fps) => {
+    const n = Math.round(HD.LOOP * fps);
+    const k = Math.floor((t + 0.07) * fps + 1e-6);
+    return ((k % n) + n) % n;
+  };
 
   /** smooth 2D value noise in [0,1] (bake time only) */
   function vnoise(x, y, sx, sy, seed) {
@@ -1822,7 +1828,7 @@
     const img = ctx.getImageData(0, yW0, W, yW1 - yW0 + 1);
     const d = img.data;
     const ph = T.phase(t, 6, 0.2);
-    const tq = (T.step(t, 4) * 4) | 0;
+    const tq = tick(t, 4);
     const mask = A0.dockMask;
     for (let y = yW0; y <= yW1; y++) {
       const f = (y - yW0) / (yW1 - yW0);
@@ -1924,13 +1930,13 @@
     const cx1 = C0.on ? C0.x + C0.spr.L : -99;
     const cy0 = C0.on ? C0.y - 1 : 999;
     const cy1 = C0.on ? C0.y + C0.spr.H : -1;
-    const sh2 = (T.step(t, 6) * 6) | 0;
+    const sh2 = tick(t, 6);
     const ph = T.phase(t, 2.3);
     for (let y = ry0; y <= ry1; y++) {
       const f = (y - ry0) / (ry1 - ry0);
       const fall = 0.42 * (1 - f) * (1 - f) + 0.08;
       // ripple lines: every few rows the mirror breaks up
-      const rip = (y + ((T.step(t, 3) * 3) | 0)) % 4 === 0;
+      const rip = (y + tick(t, 3)) % 4 === 0;
       const wob = R(Math.sin(TAU * (ph + y * 0.37)) * (0.6 + f * 1.2));
       const carRow = y >= cy0 && y <= cy1;
       const cut = rip ? 0.85 : 0.28 + 0.3 * f;

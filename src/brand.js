@@ -507,9 +507,9 @@
       } else if (s < 3.9) {
         x = tx;
         y = ty;
-        col = HD.hash(i, Math.floor(ts * 12), 77) < 0.18 ? GRAD_HOT[gi] : GRAD[gi];
+        col = HD.hash(i, Math.floor(ts * 12) % (12 * HD.LOOP), 77) < 0.18 ? GRAD_HOT[gi] : GRAD[gi];
         // a trailing spark fills the gap to the next dot so the letters read solid
-        if (HD.hash(i, Math.floor(ts * 12), 78) < 0.8) g.px(x + 1, y + 1, GRAD_EMBER[gi]);
+        if (HD.hash(i, Math.floor(ts * 12) % (12 * HD.LOOP), 78) < 0.8) g.px(x + 1, y + 1, GRAD_EMBER[gi]);
       } else {
         // the letters droop and burn out
         const u = (s - 3.9) / 1.6;

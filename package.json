@@ -2,7 +2,7 @@
   "name": "purrfect-year",
   "version": "2.0.0",
   "private": true,
-  "description": "Purrfect Year: an animated pixel-art diary of one year, a seamless 240 s loop per entry, with tools to check it and export videos.",
+  "description": "Purrfect Year: an animated pixel-art diary of one year, a seamless 240 s loop per entry, with tools to check it and export the two-minute story video.",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -18,7 +18,7 @@
     "review": "node tools/review-kit.mjs",
     "probe": "node tools/make-year.mjs --probe",
     "video": "node tools/make-year.mjs",
-    "whatsapp": "node tools/make-year.mjs --whatsapp",
+    "video:resume": "node tools/make-year.mjs --resume",
     "loop": "node tools/render-video.mjs",
     "soundtrack": "node tools/soundtrack.mjs",
     "build": "node tools/build.mjs"

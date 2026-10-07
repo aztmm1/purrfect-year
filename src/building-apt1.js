@@ -1838,7 +1838,7 @@
     if (A.tvs.length) drawTVWindows(g, t, A);
     if (A.party.length) drawParty(g, t, A);
     if (A.walkers.length) drawWalkers(g, t, A);
-    if (A.bulbs) blit2(g, A.bulbs[Math.floor(T.phase(t, 1.5) * 3) % 3]);
+    if (A.bulbs) blit2(g, A.bulbs[Math.floor(T.phase(t, 1.5, 0.013) * 3) % 3]);
     if (HD.edition.cast && HD.edition.cast.niece && HD.summer) {
       const o = doorOpen(t);
       if (o > 0) blit2(g, A.doors[o - 1]);

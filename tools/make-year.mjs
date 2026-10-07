@@ -1,108 +1,108 @@
 #!/usr/bin/env node
-// Purrfect Year: the sixteen diary entries back to back, in the order the page
-// defines them (src/editions.js), each dipping through black into the next.
+// Purrfect Year: the two-minute story of the year. The sixteen diary entries
+// back to back, in the order the page defines them (HD.EDITIONS), 7.5 s each,
+// every entry on its own story beat, dipping through black into the next.
 //
-//   node tools/make-year.mjs                 the 90 s YouTube cut: 1920x1080, exactly 2700 frames
-//                                            at 30 fps, out/purrfect-year-90s.mp4
-//   node tools/make-year.mjs --whatsapp      the 35 s vertical cut: 1080x1920, exactly 1050 frames,
-//                                            under 16 MB, out/purrfect-year-whatsapp.mp4
-//   node tools/make-year.mjs --probe         print candidate moments per entry, read from the
+//   node tools/make-year.mjs                 exactly 3600 frames at 30 fps (225 per entry), with
+//                                            the soundtrack:
+//                                              out/purrfect-year-2min-4k.mp4     3840x2160
+//                                              out/purrfect-year-2min-1080p.mp4  1920x1080 share copy
+//   node tools/make-year.mjs --probe         print the story beats per entry, read from the
 //                                            running page, to tune the TABLE below
 //       [--activity [--step 1]]              ... plus a motion scan of each entry's loop (slower)
+//       [--json [FILE]]                      ... and save it as JSON
 //
 // Options:
 //   --resume              reuse finished segments (video and audio) whose every parameter matches;
 //                         the parameters, a hash of the page's code and of the soundtrack's code
 //                         are in each segment's file name
 //   --jobs N              segments rendered at once (default: half the CPU cores, at most 4)
-//   --no-titles           90 s cut without the lower-thirds
-//   --city                90 s cut: the lower-third reads "date · city"
+//   --no-titles           no lower-thirds (entry name and date over the first 1.8 s of each entry)
 //   --no-audio            no audio track at all
 //   --soundtrack FILE     another soundtrack script with the same interface (default tools/soundtrack.mjs)
-//   --crf N --preset P    final encode (default 16 / slow for YouTube, 20 / slow for WhatsApp)
-//   --max-mb 15.5         WhatsApp size limit (decimal MB); re-encoded in two passes if over
-//   --fade S              dip through black between entries (default 0.3 s; 0.13 s vertical)
+//   --crf N --preset P    final encode (default 16 / medium: flat pixel art gains next to
+//                         nothing from slower presets); x264 High, yuv420p, bt709, faststart
+//   --scale K             main output scale of the 480x270 art (default 8 = 3840x2160)
+//   --no-share            skip the half-size share copy
+//   --fade S              dip through black between entries (default 0.3 s)
 //   --entries a,b,...     only these entries (in page order), for tests
-//   --seconds S           total length (default 90, or 35 vertical), for tests
-//   --out FILE --work DIR --dry-run
+//   --per N               frames per entry (default 225 = 7.5 s), for tests
+//   --out FILE --out-share FILE --work DIR --dry-run
 //
 // How it is made: every entry is rendered frame-exactly by tools/render-video.mjs
 // into a lossless art-resolution segment (titles composited in art pixels, the
 // dips through black frame-exact); the segments are joined frame-exactly and
-// encoded once, with the soundtrack, at the final size. So CRF and size retries
-// never re-render a frame, and the picture goes through one lossy encode only.
+// encoded once, with the soundtrack, in a single ffmpeg pass: the picture is
+// scaled up with nearest-neighbour to the 4K size, and the share copy is that
+// same 4K picture scaled down by exactly 2 with nearest-neighbour (so it is
+// pixel-identical to the 4K picture, without a second lossy generation).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import {
-  ROOT, AUDIO_RATE, SOUNDTRACK, artHash, ffprobe, openDiorama, parseArgs, pool, readEditions, readPcm, renderSoundtrack, rgbaToPng, run, shortHash,
-  soundtrackHash, writeWav,
-} from './lib.mjs';
-import { lowerThird, verticalBands } from './titles.mjs';
+import { ROOT, AUDIO_RATE, SOUNDTRACK, artHash, ffprobe, openDiorama, parseArgs, pool, readEditions, readPcm, renderSoundtrack, rgbaToPng, run, shortHash, soundtrackHash, writeWav } from './lib.mjs';
+import { lowerThird } from './titles.mjs';
+import { GLYPHS } from './pixfont.mjs';
 
 const a = parseArgs();
 const FPS = 30;
-const wa = !!a.whatsapp;
+const PER_DEFAULT = 225; // 7.5 s per entry: 16 entries = 3600 frames = 2:00.000
 
 // ---------------------------------------------------------------------------
-// The table: where each entry's segment starts (seconds into its 240 s loop)
-// and, for the vertical cut, the left edge x of its 216 px wide crop.
-//   start  the 90 s cut (segments of 5.6 s)
-//   wa     the vertical cut (segments of 2.2 s), when it differs from start
-//   x      vertical crop: x .. x+216 of the 480 px frame
-//   side   where the 90 s lower-third sits ('left' default, or 'right')
-// Story beats (src/summer.js): the niece walks in at 20-24 and 140-144,
-// the gift 40-46, blowing 98-100, candles out 100-112, the goal 150-158,
-// the heart 60-66 and 180-186. Run --probe to see fireworks, the logo
-// firework and other moments read from the page.
-// Vertical crops (src/places.js anchors):
-//   apt1, together: the window (x 203-239) and the whole building around it.
-//   apt1 holidays, he alone in the window and she with her friends in the
-//     plaza: the window (x 203-239) and the plaza group (x 330-432) span 230
-//     px, more than the 216 px crop, so we favour x 200..416: the whole
-//     window, the fire pit (x 400) and most of the group.
-//   match: his balcony (x 198-244) and the plaza.
-//   nyc: centred on the bench (x 244-274) with the hotel tower beside it.
-//   trips: centred on stages.family (bhills x 198-262, marina x 150-226);
-//     herndon has no family stage: centred on the party (x 80-150) and the
-//     birthday table (x 112), with the house gable and window (x 208-219).
-//   apt2: his window (x 205-220) with the walkers' path; Harvest keeps the
-//     fire pit (x 103) in, Halloween the lobby door (x 315-322).
+// The table: where each entry's 7.5 s segment starts (seconds into its 240 s
+// loop), where its lower-third sits, and the left edge x of a 216 px wide
+// (9:16 at full height) crop that holds the cat window and the people, for
+// stills and thumbnails (--probe checks what each crop holds).
+// Story beats (src/summer.js, src/family.js; run --probe for the rest):
+//   the niece walks in from the entrance at 20-24 and 140-144, the gift
+//   40-46, dad blows 98-100 and the candles are out 100-112, the goal
+//   150-158, the heart 60-66 and 180-186; the walkers stroll past the apt2
+//   window rightwards from 18 and leftwards from 138 (about 11 px/s); the
+//   trick-or-treat kittens reach the apt1 lobby door at about 118 and wait
+//   there 6 s; lightning at 64.8 and 170.4 at the Halloweens.
+// Crops (src/places.js anchors):
+//   apt1, together: the window (x 203-239) with the building around it.
+//   apt1 holidays, he alone in the window, she with her friends in the
+//     plaza (x 330-432): the two span 230 px, more than 216, so x 200..416
+//     keeps the whole window, the fire pit (x 400) and most of the group.
+//   match: his balcony (x 198-244) and the plaza. nyc: the bench (x 244-274)
+//   with the hotel tower. Trips: stages.family. herndon: the party (x 80-150)
+//   and the table (x 112) with the house window (x 208-219). apt2: his window
+//   (x 205-220) over the walkers' path.
 // ---------------------------------------------------------------------------
 const TABLE = {
-  // the two of them in the window; the busiest stretch of the Diwali fireworks
-  diwali: { start: 147.5, wa: 75.5, x: 120 },
-  halloween25: { start: 145, x: 120 },
+  // the two of them in the window; a busy stretch of the Diwali fireworks
+  diwali: { start: 147.5, x: 120 },
+  // the trick-or-treat kittens walk up to the lobby door and wait there
+  halloween25: { start: 115, x: 120 },
+  // she and her friends round the fire pit, warm mugs; he at the window
   thanksgiving: { start: 60, x: 200 },
   christmas: { start: 25, x: 200 },
-  // the logo firework rises at 118, bursts at about 119.5 and holds to 122.5
-  newyear: { start: 117.5, wa: 119.3, x: 200 },
+  // the logo firework rises at 118, bursts at about 119.5 and holds to 123.5
+  newyear: { start: 117, x: 200 },
   // a busy stretch of the Lunar New Year fireworks
-  lunar: { start: 145, wa: 79, x: 200 },
+  lunar: { start: 200, x: 200 },
   easter: { start: 40, x: 200 },
   midsummer: { start: 30, x: 200 },
   // the goal at 150: a breath before, the cheer and the little fireworks
-  match: { start: 148.5, wa: 149.6, x: 196 },
-  // the second heart (180-186) and the tricolour triple bursting at 187.7 and
-  // 188.3; the vertical cut catches the heart as it appears
-  nyc: { start: 183.2, wa: 180.4, x: 151 },
+  match: { start: 149, x: 196 },
+  // the second heart (180-186), then the tricolour triple bursting at 187.7
+  // and 188.3
+  nyc: { start: 181.3, x: 151 },
   la: { start: 30, x: 122 },
   sandiego: { start: 30, x: 80 },
   // dad leans in (98), blows (98-100), the candles go out (100) and the cheer
-  dc: { start: 97, wa: 98.2, x: 8, side: 'right' },
-  // the niece walks in from the entrance (20-24)
-  home: { start: 19.6, wa: 20.8, x: 120 },
-  harvest: { start: 60, x: 96, side: 'right' },
-  halloween: { start: 145, x: 112, side: 'right' },
+  dc: { start: 96, x: 8, side: 'right' },
+  // the niece walks out of the entrance (20-24)
+  home: { start: 19, x: 120 },
+  // she and her friends stroll past under his window, left to right
+  harvest: { start: 35, x: 96, side: 'right' },
+  // the costumed walkers pass his window right to left, then the lightning
+  // (170.4)
+  halloween: { start: 164, x: 112, side: 'right' },
 };
-// city labels per place (the titles; never addresses)
-const CITY = { apt1: 'Boston', apt2: 'Boston', soho: 'New York', bhills: 'Los Angeles', marina: 'San Diego', herndon: 'Herndon, Virginia' };
 
-const CW = 216; // vertical crop width in art px (x 5 = 1080)
-const WA_SCALE = 5;
-const WA_W = 216;
-const WA_H = 384; // 1920 / 5: a 57 px band above and below the 270 px picture
+const CW = 216; // crop width in art px
 
 // ---------------------------------------------------------------------------
 // read the entries from the page
@@ -137,25 +137,34 @@ function row(e) {
     t = { start: 30, x: defaultX(e) };
   }
   const x = Math.max(0, Math.min(480 - CW, Math.round(t.x ?? defaultX(e))));
-  return { start: wa ? (t.wa ?? t.start) : t.start, x, side: t.side || 'left' };
+  return { start: t.start, x, side: t.side || 'left' };
 }
 
 // ---------------------------------------------------------------------------
 // the plan: whole frames per segment, the total exact
 // ---------------------------------------------------------------------------
-const seconds = Number(a.seconds ?? (wa ? 35 : 90));
-const TOTAL = Math.round(seconds * FPS);
+const PER = Math.round(Number(a.per ?? PER_DEFAULT));
 const N = entries.length;
-if (TOTAL < N) throw new Error(`${TOTAL} frames cannot be split across ${N} entries`);
-const fade = Math.max(0, Math.round(Number(a.fade ?? (wa ? 0.13 : 0.3)) * FPS));
-const endIn = wa ? fade : Math.max(fade, 15); // the film fades in a little slower...
-const endOut = wa ? Math.max(fade, 8) : Math.max(fade, 24); // ...and out slower still
-const titles = wa || !a['no-titles'];
-const scale = wa ? WA_SCALE : Number(a.scale ?? 4);
-const outW = wa ? WA_W * WA_SCALE : 480 * scale;
-const outH = wa ? WA_H * WA_SCALE : 270 * scale;
-const out = path.resolve(ROOT, a.out || (wa ? 'out/purrfect-year-whatsapp.mp4' : 'out/purrfect-year-90s.mp4'));
-const work = path.resolve(ROOT, a.work || path.join('out', 'year', wa ? 'wa' : '90s'));
+const TOTAL = PER * N;
+if (PER < 30) throw new Error(`--per ${PER}: at least 30 frames per entry`);
+const fade = Math.max(0, Math.round(Number(a.fade ?? 0.3) * FPS));
+const endIn = Math.max(fade, 15); // the film fades in a little slower...
+const endOut = Math.max(fade, 24); // ...and out slower still
+const titles = !a['no-titles'];
+const TITLE_TO = 54; // the lower-third is gone 1.8 s into each entry
+const scale = Math.round(Number(a.scale ?? 8));
+const outW = 480 * scale;
+const outH = 270 * scale;
+const share = !a['no-share'] && scale % 2 === 0;
+if (!a['no-share'] && !share) console.warn(`WARN --scale ${scale} is odd: no exact half-size share copy`);
+const shareW = outW / 2;
+const shareH = outH / 2;
+const out = path.resolve(ROOT, a.out && a.out !== true ? String(a.out) : 'out/purrfect-year-2min-4k.mp4');
+const outShare = path.resolve(
+  ROOT,
+  a['out-share'] && a['out-share'] !== true ? String(a['out-share']) : a.out && a.out !== true ? out.replace(/(-4k)?\.mp4$/i, '') + `-${shareH}p.mp4` : 'out/purrfect-year-2min-1080p.mp4',
+);
+const work = path.resolve(ROOT, a.work && a.work !== true ? String(a.work) : path.join('out', 'year', '2min'));
 fs.mkdirSync(work, { recursive: true });
 const jobs = Math.max(1, Number(a.jobs ?? Math.min(4, Math.max(1, os.cpus().length >> 1))));
 const art = artHash();
@@ -163,35 +172,33 @@ const D = 0.15; // audio crossfade between entries, seconds
 const SPF = AUDIO_RATE / FPS; // audio samples per frame (1600)
 const XF = Math.round(D * AUDIO_RATE); // crossfade length in samples (7200)
 const script = path.resolve(ROOT, a.soundtrack && a.soundtrack !== true ? String(a.soundtrack) : SOUNDTRACK);
+const known = new Set(GLYPHS);
 
 let acc = 0;
 const segs = entries.map((e, i) => {
-  const n = Math.floor(((i + 1) * TOTAL) / N) - Math.floor((i * TOTAL) / N);
+  const n = PER;
   const r = row(e);
   const fin = i === 0 ? endIn : fade;
   const fout = i === N - 1 ? endOut : fade;
-  const date = e.when + (a.city && !wa ? ' · ' + (CITY[e.place] || '') : '');
   let overlay = null;
-  if (wa) overlay = verticalBands({ name: e.name, date: e.when, city: CITY[e.place] || e.place }, { cw: CW, ch: 270, W: WA_W, H: WA_H });
-  else if (titles) overlay = lowerThird({ name: e.name, date }, { side: r.side, from: Math.max(3, fin), to: Math.max(3, fin) + 45 });
-  const crop = wa ? `${r.x},0,${CW},270` : '0,0,480,270';
-  const key = `${String(i + 1).padStart(2, '0')}-${e.id}-s${r.start}-n${n}-c${crop.replace(/,/g, '.')}-f${fin}.${fout}-o${overlay ? shortHash(overlay) : 'none'}-L${LOOP}-a${art}`;
-  const s = { i, e, n, f0: acc, start: r.start, x: r.x, crop, fin, fout, overlay, file: path.join(work, key + '.mkv') };
+  if (titles) {
+    const missing = [...new Set([...(e.name + e.when)].filter((ch) => !known.has(ch) && !known.has(ch.toUpperCase())))];
+    if (missing.length) console.warn(`WARN ${e.id}: the pixel font has no glyph for ${missing.map((m) => JSON.stringify(m)).join(' ')}`);
+    overlay = lowerThird({ name: e.name, date: e.when }, { side: r.side, from: Math.min(4, fin), to: Math.min(TITLE_TO, n - fout) });
+  }
+  const key = `${String(i + 1).padStart(2, '0')}-${e.id}-s${r.start}-n${n}-f${fin}.${fout}-o${overlay ? shortHash(overlay) : 'none'}-L${LOOP}-a${art}`;
+  const s = { i, e, n, f0: acc, start: r.start, x: r.x, fin, fout, overlay, file: path.join(work, key + '.mkv') };
   acc += n;
   return s;
 });
 
 console.log(
-  `${wa ? 'WhatsApp vertical' : 'YouTube'} cut: ${N} entries, ${TOTAL} frames (${(TOTAL / FPS).toFixed(3)} s) at ${outW}x${outH}, ` +
-    `segments of ${Math.min(...segs.map((s) => s.n))}-${Math.max(...segs.map((s) => s.n))} frames, dips of ${fade} frames, ${jobs} job(s)`,
+  `Two-minute story: ${N} entries, ${TOTAL} frames (${(TOTAL / FPS).toFixed(3)} s) at ${outW}x${outH}${share ? ` + ${shareW}x${shareH} share copy` : ''}, ` +
+    `${PER} frames per entry, dips of ${fade} frames, ${titles ? 'lower-thirds' : 'no titles'}, ${jobs} job(s)`,
 );
 for (const s of segs) {
   const t1 = s.start + s.n / FPS;
-  console.log(
-    `  ${String(s.i + 1).padStart(2)} ${s.e.id.padEnd(12)} ${String(s.n).padStart(3)} frames  t ${s.start.toFixed(2)}-${t1.toFixed(2)}` +
-      (wa ? `  crop x ${s.x}-${s.x + CW}` : '') +
-      `  "${s.e.name}" · ${s.e.when}`,
-  );
+  console.log(`  ${String(s.i + 1).padStart(2)} ${s.e.id.padEnd(12)} t ${s.start.toFixed(2)}-${t1.toFixed(2)}  crop x ${String(s.x).padStart(3)}-${s.x + CW}  "${s.e.name}" · ${s.e.when}`);
 }
 if (a['dry-run']) process.exit(0);
 
@@ -203,70 +210,76 @@ const countFrames = (f) => {
   const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', f], { encoding: 'utf8' });
   return parseInt(r.stdout, 10);
 };
-await pool(segs, jobs, async (s) => {
-  const tag = `[${String(s.i + 1).padStart(2, '0')} ${s.e.id}] `;
-  if (a.resume && fs.existsSync(s.file) && countFrames(s.file) === s.n) {
-    console.log(tag + 'reusing ' + path.basename(s.file));
-    return;
-  }
-  const part = s.file.replace(/\.mkv$/, '.part.mkv');
-  const args = ['tools/render-video.mjs', '--edition', s.e.id, '--start', String(s.start), '--seconds', String(s.n / FPS), '--crop', s.crop, '--scale', '1', '--codec', 'lossless'];
-  args.push('--fade-in-frames', String(s.fin), '--fade-out-frames', String(s.fout), '--out', part);
-  if (s.overlay) {
-    const ovf = s.file.replace(/\.mkv$/, '.overlay.json');
-    fs.writeFileSync(ovf, JSON.stringify(s.overlay, null, 1));
-    args.push('--overlay', ovf);
-  }
-  const r = await run('node', args, { prefix: tag });
-  if (r.code !== 0) throw new Error(`${tag}render-video failed (exit ${r.code})`);
-  const got = countFrames(part);
-  if (got !== s.n) throw new Error(`${tag}segment has ${got} frames, expected ${s.n}`);
-  fs.renameSync(part, s.file);
-});
-console.log(`video segments ready in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+async function videoStage() {
+  await pool(segs, jobs, async (s) => {
+    const tag = `[${String(s.i + 1).padStart(2, '0')} ${s.e.id}] `;
+    if (a.resume && fs.existsSync(s.file) && countFrames(s.file) === s.n) {
+      console.log(tag + 'reusing ' + path.basename(s.file));
+      return;
+    }
+    const part = s.file.replace(/\.mkv$/, '.part.mkv');
+    const args = ['tools/render-video.mjs', '--edition', s.e.id, '--start', String(s.start), '--seconds', String(s.n / FPS), '--scale', '1', '--codec', 'lossless'];
+    args.push('--fade-in-frames', String(s.fin), '--fade-out-frames', String(s.fout), '--out', part);
+    if (s.overlay) {
+      const ovf = s.file.replace(/\.mkv$/, '.overlay.json');
+      fs.writeFileSync(ovf, JSON.stringify(s.overlay, null, 1));
+      args.push('--overlay', ovf);
+    }
+    const r = await run('node', args, { prefix: tag });
+    if (r.code !== 0) throw new Error(`${tag}render-video failed (exit ${r.code})`);
+    const got = countFrames(part);
+    if (got !== s.n) throw new Error(`${tag}segment has ${got} frames, expected ${s.n}`);
+    fs.renameSync(part, s.file);
+  });
+  console.log(`video segments ready in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 
-// a contact sheet: every segment at about 1 s in, for a quick look
-{
-  const pics = segs.map((s) => {
-    const k = Math.min(s.n - 1, FPS);
-    const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', s.file, '-vf', `select=eq(n\\,${k})`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 1 << 26 });
-    return r.stdout;
-  });
-  const cw = wa ? WA_W : 480;
-  const ch = wa ? WA_H : 270;
-  const cols = wa ? Math.min(8, N) : Math.min(4, N);
-  const rows = Math.ceil(N / cols);
-  const gap = 2;
-  const W = cols * cw + (cols - 1) * gap;
-  const H = rows * ch + (rows - 1) * gap;
-  const img = new Uint8Array(W * H * 4).fill(255);
-  pics.forEach((p, i) => {
-    if (!p || p.length !== cw * ch * 4) return;
-    const ox = (i % cols) * (cw + gap);
-    const oy = Math.floor(i / cols) * (ch + gap);
-    for (let y = 0; y < ch; y++) img.set(p.subarray(y * cw * 4, (y + 1) * cw * 4), ((oy + y) * W + ox) * 4);
-  });
-  const cs = path.join(work, 'contact.png');
-  rgbaToPng(img, W, H, cs, 1);
-  console.log(`contact sheet (each entry about 1 s in): ${cs}`);
+  // a contact sheet: every segment at about 1 s in (titles up), for a quick look
+  {
+    const pics = segs.map((s) => {
+      const k = Math.min(s.n - 1, FPS);
+      const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', s.file, '-vf', `select=eq(n\\,${k})`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], {
+        maxBuffer: 1 << 26,
+      });
+      return r.stdout;
+    });
+    const cw = 480;
+    const ch = 270;
+    const cols = Math.min(4, N);
+    const rows = Math.ceil(N / cols);
+    const gap = 2;
+    const W = cols * cw + (cols - 1) * gap;
+    const H = rows * ch + (rows - 1) * gap;
+    const img = new Uint8Array(W * H * 4).fill(255);
+    pics.forEach((p, i) => {
+      if (!p || p.length !== cw * ch * 4) return;
+      const ox = (i % cols) * (cw + gap);
+      const oy = Math.floor(i / cols) * (ch + gap);
+      for (let y = 0; y < ch; y++) img.set(p.subarray(y * cw * 4, (y + 1) * cw * 4), ((oy + y) * W + ox) * 4);
+    });
+    const cs = path.join(work, 'contact.png');
+    rgbaToPng(img, W, H, cs, 1);
+    console.log(`contact sheet (each entry about 1 s in): ${cs}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// audio: the soundtrack per segment, joined with 0.15 s equal-power crossfades
-// centred on the cuts. Segment i plays loop time [start - 0.075, start + n/30
-// + 0.075), so after the crossfades every sound sits on its own frame.
+// audio: the soundtrack per segment (same edition, start and length), joined
+// with 0.15 s equal-power crossfades centred on the cuts. Segment i plays loop
+// time [start - 0.075, start + n/30 + 0.075), so after the crossfades every
+// sound sits on its own frame. A segment whose soundtrack fails is silent.
 // ---------------------------------------------------------------------------
-let audioWav = null;
-if (!a['no-audio']) {
+async function audioStage() {
+  if (a['no-audio']) return null;
   const ta = Date.now();
   const total = TOTAL * SPF;
-  const h = Math.min(XF >> 1, Math.floor((Math.min(...segs.map((s) => s.n)) * SPF) / 2));
+  const h = Math.min(XF >> 1, Math.floor((PER * SPF) / 2));
   const sh = soundtrackHash(script);
   const failed = [];
   const bufs = await pool(segs, jobs, async (s) => {
     const len = s.n * SPF + 2 * h;
     const aStart = (((s.start - h / AUDIO_RATE) % LOOP) + LOOP) % LOOP;
-    const f = path.join(work, `${String(s.i + 1).padStart(2, '0')}-${s.e.id}-a${aStart.toFixed(4)}-l${len}-${sh}.wav`);
+    // the soundtrack follows the picture's events, so the page's code hash is part of the key
+    const f = path.join(work, `${String(s.i + 1).padStart(2, '0')}-${s.e.id}-a${aStart.toFixed(4)}-l${len}-L${LOOP}-${sh}-${art}.wav`);
     if (!(a.resume && fs.existsSync(f))) {
       const r = await renderSoundtrack({ edition: s.e.id, start: aStart, seconds: len / AUDIO_RATE, out: f, script });
       if (!r.ok) {
@@ -274,7 +287,7 @@ if (!a['no-audio']) {
         return new Int16Array(len * 2);
       }
       if (r.warn) console.warn(`WARN soundtrack ${s.e.id}: ${r.warn}`);
-    }
+    } else console.log(`[${String(s.i + 1).padStart(2, '0')} ${s.e.id}] reusing ${path.basename(f)}`);
     const pcm = readPcm(f);
     const buf = new Int16Array(len * 2);
     buf.set(pcm.subarray(0, Math.min(pcm.length, len * 2)));
@@ -302,7 +315,7 @@ if (!a['no-audio']) {
     }
   });
   // the film fades in and out with the picture
-  const fIn = Math.round(endIn / FPS * AUDIO_RATE * 0.6);
+  const fIn = Math.round((endIn / FPS) * AUDIO_RATE * 0.6);
   const fOut = Math.round((endOut / FPS) * AUDIO_RATE);
   const pcm = new Int16Array(total * 2);
   let clip = 0;
@@ -320,61 +333,80 @@ if (!a['no-audio']) {
     }
   }
   if (clip) console.warn(`WARN ${clip} audio samples clipped in the crossfades`);
-  audioWav = path.join(work, 'soundtrack.wav');
+  const audioWav = path.join(work, 'soundtrack.wav');
   writeWav(audioWav, pcm);
-  const lufs = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', audioWav, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' }).stderr.match(/I:\s+(-?[\d.]+|-inf) LUFS\s*\n\s*Threshold[\s\S]*$/);
-  console.log(`audio ready in ${((Date.now() - ta) / 1000).toFixed(0)} s: ${total} samples (${(total / AUDIO_RATE).toFixed(3)} s)${lufs ? `, integrated ${lufs[1]} LUFS` : ''}${failed.length === N ? ' (silent)' : ''}`);
+  const lufs = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', audioWav, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' }).stderr.match(
+    /I:\s+(-?[\d.]+|-inf) LUFS\s*\n\s*Threshold[\s\S]*$/,
+  );
+  console.log(
+    `audio ready in ${((Date.now() - ta) / 1000).toFixed(0)} s: ${total} samples (${(total / AUDIO_RATE).toFixed(3)} s)${lufs ? `, integrated ${lufs[1]} LUFS` : ''}${failed.length === N ? ' (silent)' : ''}`,
+  );
+  return audioWav;
 }
 
+// the sound is made alongside the picture and its encode (the soundtrack
+// calibrates an entry the first time it meets new sound code, which takes a
+// while), and muxed in at the end without touching the picture
+const audioP = audioStage();
+await videoStage();
+
 // ---------------------------------------------------------------------------
-// join frame-exactly and encode once at the final size
+// join frame-exactly and encode once: the 4K file and the share copy in one pass
 // ---------------------------------------------------------------------------
 const list = path.join(work, 'parts.txt');
 fs.writeFileSync(list, segs.map((s) => `file '${s.file.replace(/'/g, "'\\''")}'`).join('\n') + '\n');
-// exact timestamps (frame n at n/30 s), so frames pass through untouched
-const vf = `settb=1/${FPS},setpts=N,scale=${outW}:${outH}:flags=neighbor:out_color_matrix=bt709:out_range=tv,format=yuv420p`;
+// exact timestamps (frame n at n/30 s), so frames pass through untouched; the
+// upscale and the 2x downscale are both nearest-neighbour in RGB, then each
+// output is converted to bt709 limited-range 4:2:0 once
+const yuv = (w, h) => `scale=${w}:${h}:flags=neighbor:out_color_matrix=bt709:out_range=tv,format=yuv420p`;
+let graph = `[0:v]settb=1/${FPS},setpts=N,scale=${outW}:${outH}:flags=neighbor`;
+graph += share ? `,split=2[big][sm];[big]${yuv(outW, outH)}[v0];[sm]scale=${shareW}:${shareH}:flags=neighbor,${yuv(shareW, shareH)}[v1]` : `,${yuv(outW, outH)}[v0]`;
 const color709 = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'];
-const crf = Number(a.crf ?? (wa ? 20 : 16));
-const preset = String(a.preset || 'slow');
-const profile = wa ? ['-profile:v', 'high', '-level:v', '4.0'] : ['-profile:v', 'high'];
-const inputs = ['-f', 'concat', '-safe', '0', '-i', list, ...(audioWav ? ['-i', audioWav] : [])];
-const maps = ['-map', '0:v:0', ...(audioWav ? ['-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-ar', String(AUDIO_RATE), '-ac', '2'] : [])];
-const common = ['-fps_mode', 'passthrough', '-vf', vf, '-c:v', 'libx264', '-preset', preset, ...profile, '-tune', 'animation', '-g', String(FPS * 2), ...color709];
-const ffmpeg = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' }).status;
-fs.mkdirSync(path.dirname(out), { recursive: true });
+const crf = Number(a.crf ?? 16);
+const preset = String(a.preset && a.preset !== true ? a.preset : 'medium');
+const enc = ['-c:v', 'libx264', '-preset', preset, '-profile:v', 'high', '-tune', 'animation', '-crf', String(crf), '-g', String(FPS * 2), ...color709, '-fps_mode', 'passthrough'];
+const outputs = [out, ...(share ? [outShare] : [])];
+const silent = outputs.map((f, k) => path.join(work, `picture-${k}.mp4`));
+const args = ['-f', 'concat', '-safe', '0', '-i', list, '-filter_complex', graph];
+silent.forEach((f, k) => args.push('-map', `[v${k}]`, '-an', ...enc, '-frames:v', String(TOTAL), f));
 const te = Date.now();
-if (ffmpeg([...inputs, ...maps, ...common, '-crf', String(crf), '-frames:v', String(TOTAL), '-movflags', '+faststart', out]) !== 0) process.exit(1);
-let size = fs.statSync(out).size;
-const maxBytes = Number(a['max-mb'] ?? 15.5) * 1e6;
-if (wa && size > maxBytes) {
-  // two passes at the bitrate that fits, leaving 3% for the container
-  const audioBits = audioWav ? 192000 * seconds : 0;
-  const kbps = Math.floor((maxBytes * 8 * 0.97 - audioBits) / seconds / 1000);
-  console.log(`${(size / 1e6).toFixed(2)} MB at CRF ${crf} is over ${maxBytes / 1e6} MB: two-pass encode at ${kbps} kbps`);
-  const plog = path.join(work, 'x264-2pass');
-  const vb = ['-b:v', kbps + 'k', '-maxrate', Math.round(kbps * 1.5) + 'k', '-bufsize', kbps * 2 + 'k', '-passlogfile', plog];
-  if (ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-map', '0:v:0', ...common, ...vb, '-pass', '1', '-frames:v', String(TOTAL), '-an', '-f', 'null', '-']) !== 0) process.exit(1);
-  if (ffmpeg([...inputs, ...maps, ...common, ...vb, '-pass', '2', '-frames:v', String(TOTAL), '-movflags', '+faststart', out]) !== 0) process.exit(1);
-  size = fs.statSync(out).size;
-}
+console.log(`encoding ${outputs.map((f) => path.basename(f)).join(' and ')} (x264 ${preset}, CRF ${crf})`);
+const ffmpeg = async (args) => (await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { prefix: '[ffmpeg] ' })).code === 0;
+if (!(await ffmpeg(args))) process.exit(1);
 console.log(`encoded in ${((Date.now() - te) / 1000).toFixed(0)} s`);
+const audioWav = await audioP;
+for (let k = 0; k < outputs.length; k++) {
+  fs.mkdirSync(path.dirname(outputs[k]), { recursive: true });
+  const aenc = audioWav ? ['-i', audioWav, '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-ar', String(AUDIO_RATE), '-ac', '2'] : ['-map', '0:v:0'];
+  if (!(await ffmpeg(['-i', silent[k], ...aenc, '-c:v', 'copy', '-movflags', '+faststart', outputs[k]]))) process.exit(1);
+  fs.rmSync(silent[k], { force: true });
+}
 
 // ---------------------------------------------------------------------------
-// check the result
+// check the results
 // ---------------------------------------------------------------------------
-const info = ffprobe(out);
-const v = info.streams.find((s) => s.codec_type === 'video');
-const au = info.streams.find((s) => s.codec_type === 'audio');
-const frames = countFrames(out);
 const problems = [];
-if (frames !== TOTAL) problems.push(`${frames} frames, expected ${TOTAL}`);
-if (v.width !== outW || v.height !== outH) problems.push(`${v.width}x${v.height}, expected ${outW}x${outH}`);
-if (audioWav && (!au || Math.abs(+au.duration - TOTAL / FPS) > 0.03)) problems.push(`audio ${au ? au.duration + ' s' : 'missing'}, expected ${TOTAL / FPS} s`);
-if (wa && size >= maxBytes) problems.push(`${(size / 1e6).toFixed(2)} MB is over the ${maxBytes / 1e6} MB limit`);
-console.log(
-  `wrote ${out}: ${v.width}x${v.height}, ${frames} frames (${(+info.format.duration).toFixed(3)} s), ` +
-    `${au ? `AAC ${Math.round(au.bit_rate / 1000)} kbps ${(+au.duration).toFixed(3)} s` : 'no audio'}, ${(size / 1e6).toFixed(2)} MB, total ${((Date.now() - t0) / 1000).toFixed(0)} s`,
-);
+for (const [f, W, H] of [[out, outW, outH], ...(share ? [[outShare, shareW, shareH]] : [])]) {
+  const info = ffprobe(f);
+  const v = info && info.streams.find((s) => s.codec_type === 'video');
+  const au = info && info.streams.find((s) => s.codec_type === 'audio');
+  if (!v) {
+    problems.push(`${f}: no video stream`);
+    continue;
+  }
+  const frames = countFrames(f);
+  const name = path.basename(f);
+  if (frames !== TOTAL) problems.push(`${name}: ${frames} frames, expected ${TOTAL}`);
+  if (v.width !== W || v.height !== H) problems.push(`${name}: ${v.width}x${v.height}, expected ${W}x${H}`);
+  if (v.profile !== 'High' || v.pix_fmt !== 'yuv420p' || v.color_space !== 'bt709') problems.push(`${name}: ${v.profile} ${v.pix_fmt} ${v.color_space}, expected High yuv420p bt709`);
+  if (audioWav && (!au || Math.abs(+au.duration - TOTAL / FPS) > 0.03)) problems.push(`${name}: audio ${au ? au.duration + ' s' : 'missing'}, expected ${TOTAL / FPS} s`);
+  const size = fs.statSync(f).size;
+  console.log(
+    `wrote ${f}: ${v.width}x${v.height} H.264 ${v.profile} ${v.pix_fmt} ${v.color_space}, ${frames} frames (${(+info.format.duration).toFixed(3)} s), ` +
+      `${au ? `AAC ${Math.round(au.bit_rate / 1000)} kbps ${(+au.duration).toFixed(3)} s` : 'no audio'}, ${(size / 1e6).toFixed(2)} MB`,
+  );
+}
+console.log(`total ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 if (problems.length) {
   for (const p of problems) console.error('FAIL ' + p);
   process.exit(1);
@@ -385,8 +417,7 @@ if (problems.length) {
 // ---------------------------------------------------------------------------
 async function probe(page) {
   const step = Number(a.step ?? 1);
-  const seg90 = 90 / EDS.length;
-  const segWa = 35 / EDS.length;
+  const seg = Number(a.per ?? PER_DEFAULT) / FPS;
   const only = a.entries && a.entries !== true ? String(a.entries).split(',') : null;
   const fmt = (w) => `${w[0].toFixed(1)}-${w[1].toFixed(1)}`;
   const json = [];
@@ -395,7 +426,7 @@ async function probe(page) {
     const t = TABLE[e.id] || {};
     const p = PLACES[e.place] || {};
     const r = await page.evaluate(
-      ([id, seg90, segWa, wantActivity, step, cropX, CW]) => {
+      ([id, seg, wantActivity, step, cropX, CW]) => {
         const HD = window.HD;
         HD.setEdition(id);
         const L = HD.LOOP;
@@ -479,8 +510,7 @@ async function probe(page) {
             shells: bursts.length,
             inCrop: bursts.filter((b) => b.crop).length,
             story: bursts.filter((b) => b.story).map((b) => +b.t.toFixed(2)),
-            best90: best(seg90),
-            bestWa: best(segWa),
+            best: best(seg),
           };
         }
         if (HD.brand && HD.brand.logoWindow && HD.tag('logo-firework')) {
@@ -493,7 +523,7 @@ async function probe(page) {
         }
         if (wantActivity) {
           // how much moves at each moment: pixels that change over 0.1 s, in the
-          // vertical crop and in the whole frame
+          // 216 px crop and in the whole frame
           const ctx = HD.buffers.main.getContext('2d');
           const grab = (tt) => (HD.renderAt(tt), ctx.getImageData(0, 0, HD.W, HD.H).data.slice());
           const act = [];
@@ -516,29 +546,25 @@ async function probe(page) {
         }
         return res;
       },
-      [e.id, seg90, segWa, !!a.activity, step, t.x ?? 132, CW],
+      [e.id, seg, !!a.activity, step, t.x ?? 132, CW],
     );
     // report
     const start = t.start;
-    const waStart = t.wa ?? t.start;
     const x = t.x;
     console.log(`\n${String(e.index + 1).padStart(2, '0')} ${e.id}  (${e.place}, ${e.light}${e.fireworks ? ', fireworks ' + e.fireworks : ''}; cast ${JSON.stringify(e.cast)})`);
-    console.log(
-      `   table: 90 s ${start ?? '-'}..${start !== undefined ? (start + seg90).toFixed(1) : '-'}   vertical ${waStart ?? '-'}..${waStart !== undefined ? (waStart + segWa).toFixed(1) : '-'}   crop x ${x ?? '-'}..${x !== undefined ? x + CW : '-'}`,
-    );
+    console.log(`   table: t ${start ?? '-'}..${start !== undefined ? (start + seg).toFixed(1) : '-'}   crop x ${x ?? '-'}..${x !== undefined ? x + CW : '-'}`);
     for (const [k, w] of Object.entries(r.beats)) console.log(`   ${k.padEnd(11)} ${w === 'all loop' ? 'all loop' : w.map((q) => fmt(q) + (q[2] ? ' ' + q[2] : '')).join(', ')}`);
     if (r.logo) {
       const b = r.logoBox;
-      const where = b && x !== undefined ? ` at x ${b.x0}-${b.x1}, ${b.x0 >= x && b.x1 <= x + CW ? 'inside' : 'NOT inside'} the vertical crop` : '';
+      const where = b && x !== undefined ? ` at x ${b.x0}-${b.x1}, ${b.x0 >= x && b.x1 <= x + CW ? 'inside' : 'NOT inside'} the 216 px crop` : '';
       console.log(`   logo fw     ${fmt(r.logo)}${where}`);
     }
     if (r.fireworks) {
       const f = r.fireworks;
-      console.log(`   fireworks   ${f.shells} shells, ${f.inCrop} burst inside the vertical crop${f.story.length ? `; story shells burst at ${f.story.join(', ')}` : ''}`);
-      console.log(`               busiest 90 s windows: ${f.best90.map(([s, n]) => `${s}+ (${n} bursts)`).join(', ')}`);
-      console.log(`               busiest vertical windows: ${f.bestWa.map(([s, n]) => `${s}+ (${n})`).join(', ')}`);
+      console.log(`   fireworks   ${f.shells} shells, ${f.inCrop} burst inside the 216 px crop${f.story.length ? `; story shells burst at ${f.story.join(', ')}` : ''}`);
+      console.log(`               busiest ${seg.toFixed(1)} s windows: ${f.best.map(([s, n]) => `${s}+ (${n} bursts)`).join(', ')}`);
     }
-    // what the vertical crop holds
+    // what the 216 px crop holds
     if (x !== undefined) {
       const spans = [];
       const add = (name, x0, x1) => spans.push([name, x0, x1]);

@@ -177,7 +177,7 @@
   /** loop-safe index of a slow re-roll every ~period seconds */
   function epoch(t, period) {
     const n = T.cyclesFor(period);
-    return Math.floor((HD.wrap(t) * n) / HD.LOOP) % n;
+    return Math.floor((HD.wrap(t + 0.37) * n) / HD.LOOP) % n;
   }
 
   // ==================================================================

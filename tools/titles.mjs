@@ -4,7 +4,7 @@
 //
 // An overlay spec is plain JSON (render-video --overlay FILE.json):
 //   {
-//     "canvas": {"w": 216, "h": 384, "x": 0, "y": 57, "bg": "#04050b"},  // optional: put the
+//     "canvas": {"w": 540, "h": 300, "x": 30, "y": 15, "bg": "#04050b"},  // optional: put the
 //                    // rendered crop at (x, y) on a larger canvas (bands around the picture)
 //     "layers": [
 //       {"alpha": "always" | "dip" | {"from": 6, "to": 54, "step": 3, "n": 4},
@@ -15,7 +15,7 @@
 // alpha "dip" follows the picture's fade through black; a stepped alpha
 // fades in from frame `from` and is gone at frame `to`, in `n` whole steps
 // of `step` frames each.
-import { newImage, drawText, fillRect, hexToRgb, textWidth, wrapLines, CAP } from './pixfont.mjs';
+import { newImage, drawText, fillRect, hexToRgb, textWidth, CAP } from './pixfont.mjs';
 
 // the page's own colours (index.html :root)
 export const INK = {
@@ -121,7 +121,7 @@ export function composeFrame(ov, pic, f, F, fadeIn = 0, fadeOut = 0) {
 // ---------------------------------------------------------------------------
 
 /**
- * The 90 s cut's lower-third (480x270 art px): the entry name in ember over
+ * The story video's lower-third (480x270 art px): the entry name in ember over
  * its date in ink, on a soft veil with an ember edge, in the bottom-left (or
  * bottom-right) corner. Visible from frame `from` to `to` in stepped fades.
  */
@@ -145,57 +145,6 @@ export function lowerThird({ name, date }, { W = 480, H = 270, side = 'left', fr
           { text: date, x: x + 1 + padX, y: y + padY + CAP + gap, color: INK.ink },
         ],
       },
-    ],
-  };
-}
-
-/**
- * The vertical cut: the crop (cw x ch art px) centred between a top band
- * (the small series title and the entry name) and a bottom band (the date and
- * the city), on a near-black canvas. At scale 5, 216x384 art px = 1080x1920.
- */
-export function verticalBands({ series = 'Purrfect Year', name, date, city }, { cw = 216, ch = 270, W = 216, H = 384 } = {}) {
-  const band = (H - ch) >> 1;
-  const cx = W >> 1;
-  const maxW = W - 28;
-  // the name at double size: one line, or two balanced lines, else single size
-  let nameScale = 2;
-  let lines = [name];
-  if (textWidth(name, { scale: 2 }) > maxW) {
-    const words = String(name).split(/\s+/);
-    let best = null;
-    for (let k = 1; k < words.length; k++) {
-      const pair = [words.slice(0, k).join(' '), words.slice(k).join(' ')];
-      const w = Math.max(...pair.map((l) => textWidth(l, { scale: 2 })));
-      if (!best || w < best.w) best = { w, pair };
-    }
-    if (best && best.w <= maxW) lines = best.pair;
-    else {
-      nameScale = 1;
-      lines = wrapLines(name, W - 16);
-    }
-  }
-  const lineH = CAP * nameScale;
-  const lineGap = 2 * nameScale;
-  const titleGap = lines.length > 1 ? 5 : 7;
-  const blockH = CAP + titleGap + lines.length * lineH + (lines.length - 1) * lineGap;
-  let y = Math.round((band - blockH) / 2);
-  const top = [{ text: series, x: cx, y, color: INK.dim, track: 2, align: 'center' }];
-  y += CAP + titleGap;
-  const named = lines.map((l, i) => ({ text: l, x: cx, y: y + i * (lineH + lineGap), color: INK.ember, scale: nameScale, align: 'center' }));
-  // bottom band: the date over the city
-  const b0 = band + ch;
-  const bh = CAP + 5 + CAP;
-  const by = b0 + Math.round((H - b0 - bh) / 2);
-  const bottom = [
-    { text: date, x: cx, y: by, color: INK.ink, align: 'center' },
-    { text: city, x: cx, y: by + CAP + 5, color: INK.dim, track: 2, align: 'center' },
-  ];
-  return {
-    canvas: { w: W, h: H, x: (W - cw) >> 1, y: band, bg: INK.void },
-    layers: [
-      { alpha: 'always', items: top },
-      { alpha: 'dip', items: [...named, ...bottom] },
     ],
   };
 }

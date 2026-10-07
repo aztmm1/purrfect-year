@@ -8,8 +8,10 @@ import {
   SR, LOOP, N_LOOP, TAU, RNG, Stereo, Curve, FDN, compress, limit, chain, kHops, HOP, lufsFromHops, maxMomentaryFromHops,
   db, todb, h2, loopFreq, sinc1, panGains, wrapT, whiteFill,
 } from './dsp.mjs';
-import { VOICES } from './voices.mjs';
+import { VOICES as LOFI_VOICES } from './voices.mjs';
+import { DANCE_VOICES } from './voices-dance.mjs';
 import { compose } from './compose.mjs';
+import { composeDance, DANCE_IDS } from './compose-dance.mjs';
 import { scene } from './scenes.mjs';
 import { edition } from './picture.mjs';
 
@@ -31,17 +33,40 @@ const STEMS = {
   drone: { target: -25.5, send: 0.4, filters: [['hp', 60, 0.6], ['lp', 4200, 0.6]] },
   hiss: { target: -52, send: 0 },
 };
+const VOICES = { ...LOFI_VOICES, ...DANCE_VOICES };
+// dance stems: level, reverb send, filters, sidechain pump depth
+const DSTEMS = {
+  kick: { target: -21.5, send: 0, filters: [['hp', 30, 0.7], ['lp', 9000, 0.6]] },
+  clap: { target: -28, send: 0.22, filters: [['hp', 300, 0.7], ['lp', 8500, 0.6]] },
+  hats: { target: -30.5, send: 0.08, filters: [['hp', 3000, 0.7], ['lp', 9500, 0.6]] },
+  bass: { target: -23, send: 0, filters: [['lp', 480, 0.6], ['hp', 32, 0.7]], pump: 0.45 },
+  chords: { target: -23.5, send: 0.28, filters: [['hp', 170, 0.6], ['peak', 320, 1, -2]], pump: 0.6 },
+  pad: { target: -30, send: 0.5, filters: [['hp', 220, 0.6], ['lp', 6500, 0.6]], pump: 0.7 },
+  arp: { target: -28.5, send: 0.3, filters: [['hp', 250, 0.6]], pump: 0.4 },
+  lead: { target: -23.5, send: 0.3, filters: [['hp', 200, 0.6]], comp: { above: 9, ratio: 2.5, attack: 0.003, release: 0.12 }, pump: 0.2 },
+  fx: { target: -25, send: 0.35, filters: [['hp', 40, 0.7]], lvMode: 'max' },
+};
+const CHILL_TWEAK = { kick: -1.5, clap: -1, bass: -0.5, chords: -2, pad: 2, arp: 3, lead: 0, fx: -2, hats: 0 };
 
 // ---------------------------------------------------------------- the score
 /** everything needed to render an entry (deterministic, cheap to build) */
 export function buildScore(id, pic) {
   const ed = edition(id);
-  const music = compose(ed, pic);
+  const dance = DANCE_IDS.includes(id);
+  const music = dance ? composeDance(ed, pic) : compose(ed, pic);
   const sc = scene(ed, pic, music);
   const stems = {};
   for (const e of music.events) (stems[e.stem] = stems[e.stem] || []).push(e);
+  const chill = music.style.dance === 'chill';
   const mLayers = Object.entries(stems).map(([stem, list]) => {
-    const cfg = STEMS[stem];
+    const cfg = dance ? DSTEMS[stem] : STEMS[stem];
+    if (dance) {
+      const target = cfg.target + (chill ? CHILL_TWEAK[stem] || 0 : 0);
+      return {
+        name: 'mus-' + stem, stem, kind: 'events', lv: { mode: cfg.lvMode || 'int', target }, send: cfg.send, filters: cfg.filters, comp: cfg.comp, pump: cfg.pump ? cfg.pump * (chill ? 0.6 : 1) : 0,
+        events: list.map((e) => ({ t: wrapT(e.t), dur: e.dur, gain: e.gain, pan: e.pan, seed: e.seed, gen: (r) => VOICES[e.voice](e.p, r) })),
+      };
+    }
     let target = cfg.target;
     if (stem === 'drums' && music.style.sparse) target -= 2.5 * music.style.sparse;
     if (stem === 'lead' && ['bell', 'celesta', 'zither'].includes(music.meta.voices.lead)) target += 0.5;
@@ -50,6 +75,10 @@ export function buildScore(id, pic) {
       events: list.map((e) => ({ t: wrapT(e.t), dur: e.dur, gain: e.gain, pan: e.pan, seed: e.seed, gen: (r) => VOICES[e.voice](e.p, r) })),
     };
   });
+  if (dance) {
+    const verbM = chill ? { rt60: 1.5, damp: 4200, size: 1.3, ret: 0.42 } : { rt60: 1.7, damp: 4800, size: 1.4, ret: 0.36 };
+    return { id, ed, pic, music, dance, layers: mLayers.concat(sc.layers), verbM, verbA: sc.verb, ambTarget: sc.busTarget - (chill ? 1 : 1.5) };
+  }
   // tape hiss: part of the lofi bed
   mLayers.push({
     name: 'mus-hiss', stem: 'hiss', kind: 'bed', lv: { mode: 'int', target: STEMS.hiss.target }, send: 0,
@@ -61,7 +90,7 @@ export function buildScore(id, pic) {
     },
   });
   const verbM = { rt60: music.style.sparse > 0.5 ? 2.6 : 2.1, damp: 3400, size: 1.2, ret: music.style.sparse > 0.5 ? 0.62 : 0.52 };
-  return { id, ed, pic, music, layers: mLayers.concat(sc.layers), verbM, verbA: sc.verb, ambTarget: sc.busTarget };
+  return { id, ed, pic, music, dance, layers: mLayers.concat(sc.layers), verbM, verbA: sc.verb, ambTarget: sc.busTarget };
 }
 
 // ---------------------------------------------------------------- layers
@@ -126,6 +155,27 @@ function tremolo(st, a, rate, depth) {
     st.R[i] *= 1 - depth * (0.5 - 0.5 * m);
   }
 }
+/** sidechain gain curve from the kick times: a quick duck and a smooth recovery over ~0.6 beat */
+function pumpCurve(score, a, len) {
+  const P = score._pumpCache || (score._pumpCache = new Map());
+  const key = a + ':' + len;
+  if (P.has(key)) return P.get(key);
+  const env = new Float32Array(len);
+  const beat = score.music.beat, att = Math.round(0.012 * SR), relN = Math.round(0.62 * beat * SR);
+  for (const [t, d] of score.music.pump || []) {
+    if (!d) continue;
+    for (let m = -1; m <= 1; m++) {
+      const s = Math.round(t * SR) + m * N_LOOP - a;
+      if (s + att + relN <= 0 || s >= len) continue;
+      for (let k = Math.max(0, -s); k < att + relN && s + k < len; k++) {
+        const e = d * (k < att ? 0.5 - 0.5 * Math.cos((Math.PI * k) / att) : 0.5 + 0.5 * Math.cos((Math.PI * (k - att)) / relN));
+        if (e > env[s + k]) env[s + k] = e;
+      }
+    }
+  }
+  P.clear(); P.set(key, env);
+  return env;
+}
 const WOW = new Map();
 function tapeWobble(st, a, id, wowCents, flCents) {
   let w = WOW.get(id);
@@ -184,18 +234,24 @@ export function renderWindow(score, w0, n, gains, opts = {}) {
     if (g !== 1) st.scale(g);
     if (layer.comp) compress(st, { thr: layer.lv.target + layer.comp.above, ratio: layer.comp.ratio, attack: layer.comp.attack, release: layer.comp.release });
     if (layer.trem) tremolo(st, a, C.tremRate, C.tremDepth * layer.trem);
+    if (layer.pump) {
+      const env = pumpCurve(score, a, len), d = layer.pump;
+      for (let i = 0; i < len; i++) { const k = 1 - d * env[i]; st.L[i] *= k; st.R[i] *= k; }
+    }
+    if (opts.stemsOnly) continue;
     (isMusic ? mDry : aDry).mix(st);
     if (layer.send) (isMusic ? mSend : aSend).mix(st, layer.send);
   }
+  if (opts.stemsOnly) return { stats };
   // music bus: reverb, gentle saturation, glue, warmth, tape wobble
   const vm = score.verbM;
   new FDN({ rt60: vm.rt60, damp: vm.damp, size: vm.size, predelay: 0.02, hp: 200 }).process(mSend.L, mSend.R, mDry.L, mDry.R, vm.ret);
   const drive = C.drive || 1.2;
   for (let i = 0; i < len; i++) { mDry.L[i] = Math.tanh(drive * mDry.L[i]) / drive; mDry.R[i] = Math.tanh(drive * mDry.R[i]) / drive; }
   compress(mDry, { thr: MUSIC_LUFS + 7, ratio: 2, attack: 0.012, release: 0.3 });
-  chain(mDry.L, [['lp', C.lp, 0.65], ['highshelf', 3000, 0.7, C.shelf], ['hp', 38, 0.7]]);
-  chain(mDry.R, [['lp', C.lp, 0.65], ['highshelf', 3000, 0.7, C.shelf], ['hp', 38, 0.7]]);
-  const music = tapeWobble(mDry, a, score.id, C.wowCents, C.flutterCents);
+  chain(mDry.L, [['lp', C.lp, 0.65], ['highshelf', C.shelfF || 3000, 0.7, C.shelf], ['hp', 38, 0.7]]);
+  chain(mDry.R, [['lp', C.lp, 0.65], ['highshelf', C.shelfF || 3000, 0.7, C.shelf], ['hp', 38, 0.7]]);
+  const music = C.wowCents ? tapeWobble(mDry, a, score.id, C.wowCents, C.flutterCents) : mDry;
   // ambience bus: its space, then a gentle top and bottom
   const va = score.verbA;
   new FDN({ rt60: va.rt60, damp: va.damp, size: va.size, predelay: 0.03, hp: 250 }).process(aSend.L, aSend.R, aDry.L, aDry.R, va.ret);
