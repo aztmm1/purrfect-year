@@ -1,0 +1,1 @@
+This folder is what GitHub Pages publishes for Purrfect Year: `index.html` is the live page in one file (made with `node tools/build.mjs --out docs/index.html`) and `og.png` is its preview image for links (see the main [README](../README.md#publishing-the-page)).

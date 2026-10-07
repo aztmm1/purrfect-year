@@ -24,12 +24,12 @@
   //  season   'winter' | 'spring' | 'summer' | 'autumn'  (street trees, planters, ground cover)
   //  fire     'firepit' | 'none'   a courtyard fire pit (fire)
   //  fireworks 0..1 how busy the sky is, fireworkColors (fire)
-  //  cast     who is where (family):
-  //             window: 'together' (him + his wife in the cat window) | 'alone' (him) | 'empty'
-  //             out: 'none' | 'friends' (she and her friends celebrate in the plaza) | 'passby' (they walk past)
-  //             party: 'none' | 'match' (he is on his balcony) | 'bench' (the couple on a bench)
-  //                    | 'trip' (him, the niece, his sister and her husband) | 'birthday' (plus his dad)
-  //             niece: true = the niece visits (comes and goes)
+  //  cast     who is where (family module):
+  //             window: 'together' (two cats in the cat window) | 'alone' (the black cat) | 'empty'
+  //             out: 'none' | 'friends' (a group celebrates in the plaza) | 'passby' (a group walks past)
+  //             party: 'none' | 'match' (the black cat on his balcony) | 'bench' (two cats on a bench)
+  //                    | 'trip' (a travelling group) | 'birthday' (a party in the yard)
+  //             niece: true = the kitten visits (comes and goes)
   //  tags     decorations (decor modules)
   //  puddles  false = dry ground (engine)
   const W = (a, b) => [a, b];
@@ -37,7 +37,7 @@
     {
       id: 'diwali', name: 'Festival of Lights', festival: 'Diwali', year: 2025, when: 'October 20, 2025',
       dates: [[W([10, 15], [10, 27]), W([11, 4], [11, 19])]],
-      blurb: 'Diyas on the balcony and a rangoli in the plaza: the two of them at home together.',
+      blurb: 'Diyas on the balcony and a rangoli in the plaza.',
       place: 'apt1', light: 'night', sky: 'clear', stars: 0.7, moon: 'none', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.2, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0.5, fireworkColors: ['gold', 'magenta', 'green', 'gold', 'white'],
@@ -47,7 +47,7 @@
     {
       id: 'halloween25', name: 'Rainy Hollow', festival: 'Halloween', year: 2025, when: 'October 31, 2025',
       dates: null,
-      blurb: 'A cold rainy Halloween: pumpkins on the balcony and the two of them at the window.',
+      blurb: 'A cold rainy Halloween: pumpkins on the balcony and two cats at the window.',
       place: 'apt1', light: 'night', sky: 'overcast', stars: 0, moon: 'full', season: 'autumn',
       weather: { rain: 1, snow: 0, leaves: 0.3, petals: 0, fireflies: 0, gulls: 0, lightning: 1 },
       fire: 'none', fireworks: 0,
@@ -57,7 +57,7 @@
     {
       id: 'thanksgiving', name: 'Thanksgiving', festival: 'Thanksgiving', year: 2025, when: 'November 27, 2025',
       dates: [W([11, 20], [11, 30])],
-      blurb: 'A golden late afternoon: she and her friends with warm mugs by the fire pit, he at the window.',
+      blurb: 'A golden late afternoon: warm mugs by the fire pit in the plaza.',
       place: 'apt1', light: 'golden', sky: 'broken', stars: 0, moon: 'harvest', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.8, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'firepit', fireworks: 0,
@@ -167,7 +167,7 @@
     {
       id: 'home', name: 'Home to Boston', festival: 'End of summer', year: 2026, when: 'late August 2026',
       dates: [W([8, 25], [8, 31])],
-      blurb: 'Back home as the summer sky turns pink: the two of them in the window, the niece drops by.',
+      blurb: 'Back home as the summer sky turns pink.',
       place: 'apt1', light: 'dusk', sky: 'dusk', stars: 0.3, moon: 'crescent', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.8, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
@@ -177,7 +177,7 @@
     {
       id: 'harvest', name: 'Golden Harvest', festival: 'Harvest & Mid-Autumn', year: 2026, when: 'September 2026',
       dates: [W([9, 1], [10, 14])],
-      blurb: 'A golden late afternoon at a new address: one lit window, leaves tumbling, the harvest moon rising.',
+      blurb: 'A golden late afternoon: one lit window, leaves tumbling, the harvest moon rising.',
       place: 'apt2', light: 'golden', sky: 'broken', stars: 0, moon: 'harvest', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.8, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'firepit', fireworks: 0,
@@ -187,7 +187,7 @@
     {
       id: 'halloween', name: 'Rainy Hollow', festival: 'Halloween', year: 2026, when: 'October 31, 2026',
       dates: [W([10, 28], [11, 3])],
-      blurb: 'Halloween again, a year on: rain on a new window, and he watches the costumes go by.',
+      blurb: 'Halloween again, a year on: rain on the window and costumes going by.',
       place: 'apt2', light: 'night', sky: 'overcast', stars: 0, moon: 'full', season: 'autumn',
       weather: { rain: 1, snow: 0, leaves: 0.3, petals: 0, fireflies: 0, gulls: 0, lightning: 1 },
       fire: 'none', fireworks: 0,

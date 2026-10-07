@@ -1,48 +1,48 @@
 /*
- * fire.js — the campfire: coal bed, procedural flames, fire light + halo,
- * rising sparks / embers and the occasional ember pop.
+ * fire.js — the courtyard fire pit (Purrfect Year v2).
  *
- *   scene z42  coal bed (emissive, slow pulsing chunks between the logs)
- *   scene z44  flames (emissive, procedural, 12 fps)
- *   fx    z35  sparks, embers, pops
+ * When HD.edition.fire is 'firepit', a round fire bowl stands at the current
+ * place's firepit anchor (HD.place().firepit = {x, base}: x is its centre,
+ * base the ground line it stands on): a wide, shallow weathered-steel bowl on
+ * a short stone plinth, a bed of glowing coals, procedural flames, sparks and
+ * the warm light that pools on the plaza and on the cats around it. Smoke
+ * belongs to atmosphere (HD._fire.pit(t) gives it the column to rise from).
+ * With fire 'none' nothing is drawn. Everything is read at draw time, so live
+ * edition switching works.
  *
- * Flames: a field of stateless "puffs" (HD.time.cycle blobs, 12 fps) streams
- * up from a hot root over the coals, converging and leaning with the wind; a
- * tileable value-noise texture baked in init() scrolls upward (a whole number
- * of tile heights per loop) and erodes the field so tongues split and detach.
- * The field is banded into 7 HD.PAL.fire colours, then lone pixels / pinholes
- * are cleaned up so the shapes stay clustered.
- * The two crossing front logs (geometry mirrored from props.js) occlude the
- * lower flame so the logs read as dark silhouettes against the fire.
+ *   scene z 38   contact shadow, the bowl's back rim and inner wall, coal bed
+ *   scene z 39   flames (emissive, 12 fps)
+ *   scene z 40   the bowl's front: lip, body, plinth
+ *   fx    z 35   sparks and the odd ember pop
  *
- * Seasons: the fire is a "rig" built from a geometry config. HD.edition.fire
- * picks the rig at draw time: 'campfire' (the original, constants unchanged),
- * 'bonfire' (the same fire ~1.6x: taller/wider flames, a bigger coal bed,
- * more sparks, a bigger light) or 'none'. The bonfire paints its teepee logs
- * as emissive charcoal with ember rims (so its own light never relights them
- * to flame colour), keeps a rarer white core, a calmer 1px-jitter light whose
- * ember pops swell instead of jump, and sparks that cool off before the
- * title-safe sky. On snowy ground the light is gentler and tighter (bright
- * snow relights far harder than wet earth). Halloween's campfire path is
- * unchanged. Sparklers and fireworks live in fire-seasons.js.
+ * Flames: a field of stateless "puffs" (HD.time.cycle blobs at 12 fps)
+ * streams up from a hot root over the coals, converging and leaning with the
+ * breeze; a tileable value-noise texture baked in init() scrolls upward (a
+ * whole number of tile heights per loop) and erodes the field so tongues
+ * split and detach. The field is banded into HD.PAL.fire colours, then lone
+ * pixels and pinholes are cleaned up so the shapes stay clustered.
+ *
+ * Light by time of day: at night and dusk the bowl's outside is painted
+ * emissive (the fire inside cannot light the face turned towards us: it
+ * stays a dark silhouette with a hot lip); at golden hour and by day it is
+ * plain scene paint, so the daylight fill shows its true rust colour. Lamps
+ * are dimmed by day, so the fire light is boosted a little at golden hour to
+ * stay a warm pocket among the long shadows.
  */
 (function () {
   'use strict';
   const HD = window.HD;
   const P = HD.PAL;
   const T = HD.time;
-  const C = HD.layout.campfire;
-  const WIND = HD.layout.wind;
-  const SAFE = HD.layout.titleSafe;
+  const R = Math.round;
 
-  // fire colours as RGB
   const FIRE = P.fire.map((c) => HD.color.hex(c));
-  // flame bands (dark red edge -> near-white core)
-  const BAND_COL = [3, 5, 6, 7, 8, 9, 10];
-  const BAND_TH = [0.1, 0.22, 0.38, 0.56, 0.78, 1.02, 1.28];
+  // flame bands: dark red edge -> pale gold core
+  const BAND_COL = [3, 5, 6, 7, 8, 9];
+  const BAND_TH = [0.1, 0.26, 0.46, 0.7, 1.0, 1.4];
 
-  // ---- helpers --------------------------------------------------------------
-  // loop-wrapped integer tick at `fps` (for per-tick hashes that must repeat every loop)
+  // ---- helpers -----------------------------------------------------------
+  /** loop-wrapped integer tick at `fps` (per-tick hashes repeat every loop) */
   function tick(t, fps) {
     const n = Math.round(HD.LOOP * fps);
     const k = Math.floor(t * fps + 1e-6) % n;
@@ -53,8 +53,8 @@
     // two-octave tileable value noise, elongated vertically (flame tongues)
     const out = new Float32Array(NW * NH);
     const oct = [
-      { cx: 7, cy: 3, a: 0.7 },
-      { cx: 14, cy: 6, a: 0.3 },
+      { cx: 6, cy: 3, a: 0.7 },
+      { cx: 12, cy: 6, a: 0.3 },
     ];
     for (const o of oct) {
       const lat = new Float32Array(o.cx * o.cy);
@@ -77,12 +77,10 @@
           const b = lat[y0 * o.cx + x1];
           const c = lat[y1 * o.cx + x0];
           const d = lat[y1 * o.cx + x1];
-          const v = (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
-          out[y * NW + x] += v * o.a;
+          out[y * NW + x] += ((a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy) * o.a;
         }
       }
     }
-    // normalise to 0..1
     let lo = Infinity;
     let hi = -Infinity;
     for (let i = 0; i < out.length; i++) {
@@ -93,639 +91,519 @@
     return out;
   }
 
-  // same capsule test props.js uses for its logs (logShape), absolute coords
-  function inLog(x, y, x0, y0, x1, y1, w) {
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const tx = (x1 - x0) / len;
-    const ty = (y1 - y0) / len;
-    const px = x - x0;
-    const py = y - y0;
-    const s = px * tx + py * ty;
-    const v = -px * ty + py * tx;
-    return s >= 0 && s <= len && Math.abs(v) <= w / 2;
-  }
-
-  // colour by "temperature" 0..1 (1 = white hot)
+  /** spark colour by temperature 0..1 (1 = white hot) */
   function sparkCol(k) {
     return k > 0.86 ? P.fire[10] : k > 0.72 ? P.fire[9] : k > 0.58 ? P.fire[8] : k > 0.44 ? P.fire[7] : k > 0.3 ? P.fire[6] : k > 0.18 ? P.fire[5] : k > 0.08 ? P.fire[4] : P.fire[3];
   }
 
-  const LCY = C.base - 1;
-  // per-ground light tuning for snowy editions (thin or deep snow is near-white)
-  const SNOW_GROUND = { snow: { k: 0.46, pow: 2.0, r: 0.86 }, 'thin-snow': { k: 0.46, pow: 2.0, r: 0.86 } };
-  // pop timing: one burst every ~6-10 s
-  const POP_P = 8;
-  function popState(t) {
-    const c = T.cycle(t, 0, POP_P, 4242);
-    const at = c.rnd(1) * 2.5; // fire time inside the cycle
-    const tau = c.age * c.P - at;
-    return { tau, c: c.c, x: c.rnd(2), n: 5 + Math.floor(c.rnd(3) * 4) };
+  /** is the current time of day lit by the sun (bowl painted as plain scene paint)? */
+  function sunlit() {
+    const lt = HD.light ? HD.light() : null;
+    return !!lt && lt.day >= 0.5;
   }
 
-  // ---- a fire rig: everything parametrised by one geometry config ---------------
-  function makeRig(o) {
-    const S = o.S; // 1 = the original campfire
-    const CX = C.x + 1; // visual centre of the log teepee (apex sits at ~97)
-    const BASE = C.base - 2; // flame root (y), just inside the stone ring
-    const FH = o.FH; // nominal flame height
-    const HALFW = o.HALFW; // half width at the root
+  // ---- the bowl --------------------------------------------------------------
+  // Hand-placed rows, relative to the centre x and the ground line `base`
+  // (dy < 0 is up). The rim is an ellipse seen slightly from above:
+  //   dy -9      back rim (its top edge)
+  //   dy -8..-7  the opening: inner back wall and the coal bed
+  //   dy -6      the front lip (its top surface catches the flames)
+  //   dy -5..-2  the bowl's outer face, narrowing to the stem
+  //   dy -1      the stone plinth on the ground
+  const HW = 10; // half width of the lip
+  const RIM_Y = -8; // centre row of the rim ellipse (the coal bed)
+  // opening half-widths per row (inner back wall + coals live here)
+  const OPEN = { '-9': 5, '-8': 8 };
+  // the back rim: its top edge and the two shoulders
+  const BACK = [
+    [-10, -5, 5],
+    [-9, -8, -6],
+    [-9, 6, 8],
+    [-8, -10, -9],
+    [-8, 9, 10],
+  ];
+  // outer face rows [dy, half width] (the first is the lip)
+  const BODY = [
+    [-7, 10],
+    [-6, 10],
+    [-5, 9],
+    [-4, 7],
+    [-3, 5],
+  ];
+  // stone pedestal [dy, half width]
+  const PLINTH = [
+    [-2, 3],
+    [-1, 4],
+  ];
 
-    // flame grid (scene coords)
-    const GX0 = CX - o.gx;
-    const GY0 = BASE - o.gy;
-    const GW = o.GW;
-    const GH = o.GH;
-    // coal grid
-    const KX0 = CX - o.kx;
-    const KY0 = BASE - o.ky;
-    const KW = o.KW;
-    const KH = o.KH;
-    // noise tile
-    const NW = o.NW;
-    const NH = o.NH;
-    const LOGS = o.logs;
-    const LOG_OCC_Y = o.logOccY;
-    const N_BLOB = o.nBlob;
-    const N_SPARK = o.nSpark;
-    const LT = o.light;
-    // bonfire-only tuning (the campfire keeps the original constants)
-    const ROOT_A = o.rootK ? 0.86 * o.rootK : 0.86; // hot-root splat strengths
-    const ROOT_B = o.rootK ? 0.42 * o.rootK : 0.42;
-    const KN0 = o.kN0 === undefined ? 0.22 : o.kN0; // noise erosion floor at the root
-    const TH = o.bandTh || BAND_TH; // band thresholds (the bonfire's white core is rarer)
-    const JS = o.jitterS === undefined ? S : o.jitterS; // main-light jitter scale
-    const CHAR = !!o.charLogs; // logs inside the flame are painted as emissive charcoal
-    const SAFE_FADE = !!o.safeFade; // sparks fade out before the title-safe sky
-    const SOFT_POP = !!o.softPop; // ember pops swell the light instead of jumping it
+  // Colours, as final screen colours: the bowl is painted emissive at every
+  // time of day. The fire inside cannot light the face turned towards us,
+  // and the daylight fill would relight the rust into a glowing plate, so
+  // each light mode gets its own hand-picked ramp. NIGHT (also dusk): a dark
+  // steel silhouette with a hot lip and a faint cold rim on the left. SUN
+  // (golden hour and day): weathered corten in low warm sunlight from the
+  // right, a pale concrete pedestal.
+  const NIGHT = {
+    rimHot: [P.fire[6], P.fire[5], P.fire[4]], // lip top by flicker level
+    rimBack: [P.fire[4], P.fire[3], P.fire[2]], // far rim, lit from inside
+    wall: [P.fire[3], P.fire[2], P.fire[1]], // inner back wall above the coals
+    face: [P.wood[4], P.wood[2], P.wood[1], P.wood[0]], // lip face, mid, lower, bottom
+    edge: [P.wood[1], P.wood[0], P.wood[0]], // row ends (round silhouette)
+    sheen: P.night[5], // cold rim light on the left
+    sheenX: -1,
+    stone: [P.stone[4], P.stone[3], P.stone[2]], // pedestal top, face, shade
+    shadow: P.stone[0],
+  };
+  const SUN = {
+    rimHot: [P.fire[7], P.fire[6], P.fire[5]],
+    rimBack: ['#c4683a', '#a8552e', '#8a4426'],
+    wall: [P.fire[4], P.fire[3], P.fire[3]],
+    face: ['#7a4630', '#5e3424', '#46261c', '#2e1912'],
+    edge: ['#4a2a1e', '#36201a', '#26150f'],
+    sheen: '#9a5a38', // the sunlit side (right)
+    sheenX: 1,
+    stone: ['#b4a08a', '#8c7c6c', '#6a5c52'],
+    shadow: P.stone[1],
+  };
 
-    let NOISE = null; // Float32Array NW*NH, tileable
-    let LOGMASK = null; // Uint8Array GW*GH: 1 where a front-crossing log covers the flame
-    let flameCv = null;
-    let flameCtx = null;
-    let flameImg = null;
-    let LV = null; // level grid
-    let LV2 = null;
-    let FLD = null; // flame field
-    let coalCv = null;
-    let coalCtx = null;
-    let coalImg = null;
-    let COALS = null; // [{x, y, base, cl}] coal pixels
-    let LOGCOL = null; // Uint8Array GW*GH: charcoal shade index of the teepee logs (CHAR rigs)
+  // ---- flames ------------------------------------------------------------------
+  const FH = 12; // nominal flame height above the coal bed
+  const HALFW = 7.5; // half width of the flame root
+  const GW = 26;
+  const GH = 26;
+  const NW = 24;
+  const NH = 36;
+  const N_BLOB = 14;
+  const N_SPARK = 20;
 
-    function logAt(x, y) {
-      for (const l of LOGS) if (inLog(x, y, l[0], l[1], l[2], l[3], l[4])) return true;
-      return false;
-    }
-    // does a log hide the flame at (x, y)? a log may carry its own occlusion
-    // line (l[5]): above it the flames lick in front of that log
-    function logOcc(x, y) {
-      for (const l of LOGS) if (y >= (l[5] === undefined ? LOG_OCC_Y : l[5]) && inLog(x, y, l[0], l[1], l[2], l[3], l[4])) return true;
-      return false;
-    }
+  let NOISE = null;
+  let flameCv = null;
+  let flameCtx = null;
+  let flameImg = null;
+  let LV = null;
+  let LV2 = null;
+  let FLD = null;
+  let COALS = null; // [{dx, dy, base, cl, per}] coal pixels relative to (cx, base)
+  let coalCv = null;
+  let coalCtx = null;
+  let coalImg = null;
+  const KW = 2 * HW + 1;
+  const KH = 1;
 
-    // flame "breath": height multiplier shared by the flames and the light
-    function flameHeight(t) {
-      const f = T.flicker(t, 3, 1.2);
-      // occasional taller flare (a few seconds every ~half minute)
-      const fl = T.noise(t, 9, 77);
-      const flare = HD.smoothstep(0.62, 0.9, fl);
-      return { f, flare, h: FH * (0.92 + 0.3 * f + 0.34 * flare) };
-    }
+  /** the fire pit of the current edition, or null */
+  function pitAnchor() {
+    const ed = HD.edition;
+    if (!ed || ed.fire !== 'firepit') return null;
+    const pl = HD.place ? HD.place() : null;
+    return pl && pl.firepit ? pl.firepit : null;
+  }
 
-    // ---- flames -------------------------------------------------------------------
-    // rising flame "puffs": stateless blobs streaming up from the coals; where
-    // they overlap they make the body, where they separate they become tongues
-    // and detached wisps
-    function splat(fld, bx, by, rx, ry, s) {
-      const x0 = Math.max(0, Math.floor(bx - rx - GX0));
-      const x1 = Math.min(GW - 1, Math.ceil(bx + rx - GX0));
-      const y0 = Math.max(0, Math.floor(by - ry - GY0));
-      const y1 = Math.min(GH - 1, Math.ceil(by + ry - GY0));
-      const irx = 1 / (rx * rx);
-      const iry = 1 / (ry * ry);
-      for (let gy = y0; gy <= y1; gy++) {
-        const dy = GY0 + gy + 0.5 - by;
-        const ky = 1 - dy * dy * iry;
-        if (ky <= 0) continue;
-        const row = gy * GW;
-        for (let gx = x0; gx <= x1; gx++) {
-          const dx = GX0 + gx + 0.5 - bx;
-          const k = ky - dx * dx * irx;
-          if (k > 0) fld[row + gx] += s * k;
-        }
+  // flame "breath": height multiplier shared by the flames, light and sparks
+  function flameHeight(t) {
+    const f = T.flicker(t, 3, 1.2);
+    const fl = T.noise(t, 9, 77);
+    const flare = HD.smoothstep(0.64, 0.92, fl);
+    return { f, flare, h: FH * (0.88 + 0.28 * f + 0.26 * flare) };
+  }
+
+  function splat(fld, gx0, gy0, bx, by, rx, ry, s) {
+    const x0 = Math.max(0, Math.floor(bx - rx - gx0));
+    const x1 = Math.min(GW - 1, Math.ceil(bx + rx - gx0));
+    const y0 = Math.max(0, Math.floor(by - ry - gy0));
+    const y1 = Math.min(GH - 1, Math.ceil(by + ry - gy0));
+    const irx = 1 / (rx * rx);
+    const iry = 1 / (ry * ry);
+    for (let gy = y0; gy <= y1; gy++) {
+      const dy = gy0 + gy + 0.5 - by;
+      const ky = 1 - dy * dy * iry;
+      if (ky <= 0) continue;
+      const row = gy * GW;
+      for (let gx = x0; gx <= x1; gx++) {
+        const dx = gx0 + gx + 0.5 - bx;
+        const k = ky - dx * dx * irx;
+        if (k > 0) fld[row + gx] += s * k;
       }
     }
+  }
 
-    function drawFlames(g, t) {
-      const ts = T.step(t, 12);
-      const st = flameHeight(ts);
-      const Hc = st.h;
-      // two noise layers scrolling upward a whole number of tiles per loop
-      const sA = Math.floor(T.phase(ts, 1.45) * NH);
-      const sB = Math.floor(T.phase(ts, 2.4) * NH);
-      // gusty lean to the right
-      const gust = T.noise(ts, 3.3, 51);
-      const lean = 0.05 + 0.1 * gust;
-      const sway = (T.noise(ts, 1.3, 52) - 0.5) * 2.4 * S;
-      const fld = FLD;
-      fld.fill(0);
-      // hot root over the coals
-      splat(fld, CX + 0.5, BASE - 1, HALFW * (0.92 + 0.08 * st.f), (5 + 1.5 * st.f) * S, ROOT_A);
-      splat(fld, CX + 0.5, BASE - 5 * S, HALFW * 0.55, (7 + 2 * st.f) * S, ROOT_B);
-      // streaming blobs
-      for (let i = 0; i < N_BLOB; i++) {
-        const c = T.cycle(ts, i, (0.95 + HD.hash(i, 1, 23) * 0.5) * o.blobLife, 321);
-        const a = c.age;
-        const side = c.rnd(0) * 2 - 1; // -1..1 across the root
-        const cen = 1 - Math.abs(side); // centre blobs climb higher
-        const top = Hc * (0.48 + 0.5 * cen + 0.22 * c.rnd(1));
-        const h = 2 * S + top * Math.pow(a, 0.85);
-        const xs = CX + 0.5 + side * HALFW * 0.8;
-        // converge towards the axis as they rise, lean with the wind, wobble
-        const conv = 0.55 * Math.min(1, a * 1.4);
-        const hn = h / Hc;
-        const wob = Math.sin(6.2832 * (c.rnd(2) + a * (1 + c.rnd(3)))) * 1.3 * S * hn;
-        const bx = xs + (CX + 0.5 - xs) * conv + lean * h + sway * hn * hn + wob;
-        const by = BASE - h;
-        const r = ((2.2 + 2.6 * c.rnd(4)) * Math.pow(1 - a, 0.85) + 0.5) * S;
-        splat(fld, bx, by, r, r * (1.6 + 1.5 * a), 0.64 * (1 - a * 0.55));
-      }
-      const d = flameImg.data;
-      d.fill(0);
-      const lv = LV;
-      for (let gy = 0; gy < GH; gy++) {
-        const y = GY0 + gy;
-        const h = BASE - y + 0.5;
-        const row = gy * GW;
-        if (h < -1) {
-          for (let gx = 0; gx < GW; gx++) lv[row + gx] = 0;
+  function drawFlames(g, t, cx, base) {
+    const ts = T.step(t, 12);
+    const st = flameHeight(ts);
+    const Hc = st.h;
+    const root = base + RIM_Y - 0.5; // flame root (y), at the coal bed
+    const gx0 = cx - (GW >> 1);
+    const gy0 = R(root) - GH + 3;
+    const sA = Math.floor(T.phase(ts, 1.35) * NH);
+    const sB = Math.floor(T.phase(ts, 2.2) * NH);
+    const breeze = HD.summer ? HD.summer.breeze(ts) : 0;
+    const lean = 0.06 + 0.07 * breeze;
+    const sway = (T.noise(ts, 1.3, 52) - 0.5) * 1.6;
+    const fld = FLD;
+    fld.fill(0);
+    const cxf = cx + 0.5;
+    // hot root over the coals
+    splat(fld, gx0, gy0, cxf, root, HALFW * (0.94 + 0.06 * st.f), 2.4 + 0.8 * st.f, 0.8);
+    splat(fld, gx0, gy0, cxf, root - 2.5, HALFW * 0.5, 3.4 + 1 * st.f, 0.34);
+    for (let i = 0; i < N_BLOB; i++) {
+      const c = T.cycle(ts, i, 0.62 + HD.hash(i, 1, 23) * 0.34, 321);
+      const a = c.age;
+      const side = c.rnd(0) * 2 - 1;
+      const cen = 1 - Math.abs(side);
+      const top = Hc * (0.42 + 0.52 * cen + 0.2 * c.rnd(1));
+      const h = 1 + top * Math.pow(a, 0.85);
+      const xs = cxf + side * HALFW * 0.82;
+      const conv = 0.6 * Math.min(1, a * 1.4);
+      const hn = h / Hc;
+      const wob = Math.sin(6.2832 * (c.rnd(2) + a * (1 + c.rnd(3)))) * 0.8 * hn;
+      const bx = xs + (cxf - xs) * conv + lean * h + sway * hn * hn + wob;
+      const by = root - h;
+      const r = (1.3 + 1.7 * c.rnd(4)) * Math.pow(1 - a, 0.8) + 0.45;
+      splat(fld, gx0, gy0, bx, by, r, r * (1.5 + 1.4 * a), 0.66 * (1 - a * 0.5));
+    }
+    const lv = LV;
+    for (let gy = 0; gy < GH; gy++) {
+      const y = gy0 + gy;
+      const h = root - y + 0.5;
+      const row = gy * GW;
+      const hc = Math.min(1.2, Math.max(0, h / Hc));
+      const nRowA = ((gy + sA) % NH) * NW;
+      const nRowB = ((gy + sB + 13) % NH) * NW;
+      const kN = 0.3 + 0.45 * hc;
+      for (let gx = 0; gx < GW; gx++) {
+        const f0 = fld[row + gx];
+        if (f0 <= 0.02) {
+          lv[row + gx] = 0;
           continue;
         }
-        const hc = Math.min(1.2, Math.max(0, h / Hc));
-        const nRowA = ((gy + sA) % NH) * NW;
-        const nRowB = ((gy + sB + 17) % NH) * NW;
-        const kN = KN0 + 0.36 * hc;
-        for (let gx = 0; gx < GW; gx++) {
-          const f0 = fld[row + gx];
-          if (f0 <= 0.02) {
-            lv[row + gx] = 0;
-            continue;
-          }
-          const n = 0.62 * NOISE[nRowA + (gx % NW)] + 0.38 * NOISE[nRowB + ((gx + 11) % NW)];
-          const F = f0 - (n - 0.35) * kN;
-          let L = 0;
-          while (L < 7 && F > TH[L]) L++;
-          lv[row + gx] = L;
-        }
-      }
-      // cleanup: no lone pixels, no isolated bright dots, fill pinholes
-      const l2 = LV2;
-      for (let gy = 0; gy < GH; gy++) {
-        for (let gx = 0; gx < GW; gx++) {
-          const p = gy * GW + gx;
-          const v = lv[p];
-          const a = gx > 0 ? lv[p - 1] : 0;
-          const b = gx < GW - 1 ? lv[p + 1] : 0;
-          const c = gy > 0 ? lv[p - GW] : 0;
-          const e = gy < GH - 1 ? lv[p + GW] : 0;
-          let mx = a > b ? a : b;
-          if (c > mx) mx = c;
-          if (e > mx) mx = e;
-          let ov = v;
-          if (v > 0) {
-            if (mx === 0) ov = 0;
-            else if (v > mx) ov = mx;
-          } else {
-            const cnt = (a > 0) + (b > 0) + (c > 0) + (e > 0);
-            if (cnt >= 3) {
-              let mn = 9;
-              if (a > 0 && a < mn) mn = a;
-              if (b > 0 && b < mn) mn = b;
-              if (c > 0 && c < mn) mn = c;
-              if (e > 0 && e < mn) mn = e;
-              ov = mn;
-            }
-          }
-          l2[p] = ov;
-        }
-      }
-      if (CHAR) paintCharLogs(d, l2);
-      else
-        for (let p = 0, q = 0; p < GW * GH; p++, q += 4) {
-          const v = l2[p];
-          if (v === 0 || LOGMASK[p]) continue;
-          const col = FIRE[BAND_COL[v - 1]];
-          d[q] = col[0];
-          d[q + 1] = col[1];
-          d[q + 2] = col[2];
-          d[q + 3] = 255;
-        }
-      flameCtx.putImageData(flameImg, 0, 0);
-      g.em.sprite(flameCv, GX0, GY0);
-    }
-
-    // Bonfire: the teepee logs are backlit by the fire, so where they cross the
-    // flame body they are painted here as emissive charcoal (never relit to the
-    // flame's own value), with a 1px ember rim where a flame touches them and a
-    // few dull ember cracks where the fire is behind. Elsewhere the flame is drawn as usual.
-    const CHAR_COL = [null, P.wood[0], P.wood[1], P.wood[2], P.fire[1]].map((c) => c && HD.color.hex(c));
-    const RIM_LO = HD.color.hex(P.fire[2]);
-    const RIM_HI = HD.color.hex(P.fire[3]);
-    function paintCharLogs(d, l2) {
-      for (let gy = 0, p = 0; gy < GH; gy++) {
-        for (let gx = 0; gx < GW; gx++, p++) {
-          const q = p * 4;
-          const v = l2[p];
-          const lc = LOGCOL[p];
-          if (v > 0 && !LOGMASK[p]) {
-            // visible flame
-            const col = FIRE[BAND_COL[v - 1]];
-            d[q] = col[0];
-            d[q + 1] = col[1];
-            d[q + 2] = col[2];
-            d[q + 3] = 255;
-            continue;
-          }
-          if (!lc) continue;
-          // a log pixel the flame does not cover: charcoal, ember rim next to flame
-          let nb = 0;
-          if (gx > 0 && !LOGMASK[p - 1] && l2[p - 1] > nb) nb = l2[p - 1];
-          if (gx < GW - 1 && !LOGMASK[p + 1] && l2[p + 1] > nb) nb = l2[p + 1];
-          if (gy > 0 && !LOGMASK[p - GW] && l2[p - GW] > nb) nb = l2[p - GW];
-          if (gy < GH - 1 && !LOGMASK[p + GW] && l2[p + GW] > nb) nb = l2[p + GW];
-          // flame on the far side shows only as a rim where it is actually behind
-          let col;
-          if (nb > 0 && v > 0) col = nb >= 4 ? RIM_HI : RIM_LO;
-          else if (nb > 0) col = RIM_LO;
-          else if (lc === 4) col = v > 0 ? CHAR_COL[4] : CHAR_COL[2];
-          else col = CHAR_COL[lc];
-          d[q] = col[0];
-          d[q + 1] = col[1];
-          d[q + 2] = col[2];
-          d[q + 3] = 255;
-        }
+        const n = 0.62 * NOISE[nRowA + (gx % NW)] + 0.38 * NOISE[nRowB + ((gx + 7) % NW)];
+        const F = f0 - (n - 0.35) * kN;
+        let L = 0;
+        while (L < 6 && F > BAND_TH[L]) L++;
+        lv[row + gx] = L;
       }
     }
-
-    // ---- coal bed ---------------------------------------------------------------------
-    function drawCoals(g, t) {
-      const ts = T.step(t, 12);
-      const d = coalImg.data;
-      d.fill(0);
-      const glow = T.flicker(t, 3, 0.6);
-      for (const k of COALS) {
-        const pulse = T.noise(ts, k.per, k.cl);
-        let v = k.base + (pulse - 0.5) * 0.55 + (glow - 0.5) * 0.2;
-        // a tiny sparkle now and then on the hottest chunks
-        if (k.base > 0.55 && HD.hash(k.cl, tick(t, 12), 5) > 0.985) v += 0.3;
-        const ci = v < 0.12 ? 1 : v < 0.3 ? 2 : v < 0.45 ? 3 : v < 0.58 ? 4 : v < 0.7 ? 5 : v < 0.82 ? 6 : v < 0.93 ? 7 : 8;
-        const col = FIRE[ci];
-        const q = ((k.y - KY0) * KW + (k.x - KX0)) * 4;
-        d[q] = col[0];
-        d[q + 1] = col[1];
-        d[q + 2] = col[2];
-        d[q + 3] = 255;
-      }
-      coalCtx.putImageData(coalImg, 0, 0);
-      g.em.sprite(coalCv, KX0, KY0);
-    }
-
-    // ---- sparks & embers --------------------------------------------------------------
-    function drawSparks(g, t) {
-      const drift = WIND.smokeDrift;
-      for (let i = 0; i < N_SPARK; i++) {
-        const per = 2.6 + HD.hash(i, 3, 17) * 2.6; // 2.6..5.2 s between births
-        const c = T.cycle(t, i, per, 909);
-        const life = (1.2 + c.rnd(0) * 2.3) * o.sparkLife; // 1.2..3.5 s
-        const tau = c.age * c.P;
-        if (tau > life) continue;
-        if (c.rnd(9) < 0.22) continue; // some slots skip a life: calmer, irregular
-        const a = tau / life;
-        const x0 = CX + (c.rnd(1) - 0.45) * 12 * S;
-        const y0 = BASE - 8 * S - c.rnd(2) * 12 * S;
-        const v0 = o.v0a + c.rnd(3) * o.v0b; // initial rise speed px/s
-        const k = 1.3 + c.rnd(4) * 1.2; // buoyancy decay time
-        const rise = v0 * k * (1 - Math.exp(-tau / k));
-        const wind = (drift * 1.2 + c.rnd(5) * 8) * Math.pow(tau, 1.35);
-        const wa = 1 + c.rnd(6) * 2.2;
-        const wob = wa * Math.sin(tau * (3 + c.rnd(7) * 4) + c.rnd(8) * 6.283) * Math.min(1, tau * 1.5);
-        const x = Math.round(x0 + wind + wob);
-        const y = Math.round(y0 - rise);
-        // cooling, with a gentle twinkle
-        const tw = HD.hash(i, tick(t, 14), c.c, 2) < 0.12 ? -0.12 : 0;
-        let temp = (1 - a) * (0.75 + 0.25 * c.rnd(10)) + tw;
-        // the bonfire's tall sparks cool off before they reach the title-safe sky
-        if (SAFE_FADE && x < SAFE.x1 + 4 && y < SAFE.y1 + 18) temp *= Math.max(0, (y - SAFE.y1 - 4) / 14);
-        if (temp < 0.03) continue;
-        const col = sparkCol(temp);
-        const big = c.rnd(11) < o.bigP && a < 0.35;
-        if (big) {
-          g.rect(x, y, 2, 2, col);
+    // cleanup: no lone pixels, no isolated bright dots, fill pinholes
+    const l2 = LV2;
+    for (let gy = 0; gy < GH; gy++) {
+      for (let gx = 0; gx < GW; gx++) {
+        const p = gy * GW + gx;
+        const v = lv[p];
+        const a = gx > 0 ? lv[p - 1] : 0;
+        const b = gx < GW - 1 ? lv[p + 1] : 0;
+        const c = gy > 0 ? lv[p - GW] : 0;
+        const e = gy < GH - 1 ? lv[p + GW] : 0;
+        let mx = a > b ? a : b;
+        if (c > mx) mx = c;
+        if (e > mx) mx = e;
+        let ov = v;
+        if (v > 0) {
+          if (mx === 0) ov = 0;
+          else if (v > mx) ov = mx;
         } else {
-          g.px(x, y, col);
-          // short motion streak while still fast
-          const sp = v0 * Math.exp(-tau / k);
-          if (sp > 34 && temp > 0.4) g.px(x, y + 1, sparkCol(temp - 0.3));
-        }
-      }
-      // ember pop: a quick burst of 5-8 sparks
-      const pp = popState(t);
-      if (pp.tau >= 0 && pp.tau < 1.6) {
-        const px0 = CX - 4 * S + pp.x * 8 * S;
-        const py0 = BASE - 10 * S;
-        const n = pp.n + o.popExtra;
-        for (let j = 0; j < n; j++) {
-          const r0 = HD.hash(pp.c, j, 31, 1);
-          const r1 = HD.hash(pp.c, j, 31, 2);
-          const r2 = HD.hash(pp.c, j, 31, 3);
-          const life = 0.55 + r2 * 0.9;
-          const tau = pp.tau;
-          if (tau > life) continue;
-          const ang = -Math.PI / 2 + (r0 - 0.5) * 2.2; // mostly upward fan
-          const v = (55 + r1 * 55) * o.popV;
-          const vx = Math.cos(ang) * v;
-          const vy = Math.sin(ang) * v;
-          const x = Math.round(px0 + vx * tau + drift * 2 * tau * tau);
-          const y = Math.round(py0 + vy * tau + 0.5 * 70 * tau * tau);
-          const temp = 1 - tau / life;
-          g.px(x, y, sparkCol(temp));
-          if (tau < 0.25) g.px(x - Math.sign(vx), y + 1, sparkCol(temp - 0.35));
-        }
-      }
-    }
-
-    function init() {
-      NOISE = bakeNoise(HD.rng(4711), NW, NH);
-      LOGMASK = new Uint8Array(GW * GH);
-      for (let gy = 0; gy < GH; gy++)
-        for (let gx = 0; gx < GW; gx++) if (logOcc(GX0 + gx, GY0 + gy)) LOGMASK[gy * GW + gx] = 1;
-      if (CHAR) {
-        // charcoal shade per log pixel, same capsule geometry and draw order as
-        // the props teepee (later logs on top); 4 = a glowing crack
-        LOGCOL = new Uint8Array(GW * GH);
-        const all = LOGS.concat(o.backLogs || []);
-        for (const l of all) {
-          const [x0, y0, x1, y1, w] = l;
-          const len = Math.hypot(x1 - x0, y1 - y0);
-          const tx = (x1 - x0) / len;
-          const ty = (y1 - y0) / len;
-          let nx = -ty;
-          let ny = tx;
-          if (ny > 0) {
-            nx = -nx;
-            ny = -ny;
+          const cnt = (a > 0) + (b > 0) + (c > 0) + (e > 0);
+          if (cnt >= 3) {
+            let mn = 9;
+            if (a > 0 && a < mn) mn = a;
+            if (b > 0 && b < mn) mn = b;
+            if (c > 0 && c < mn) mn = c;
+            if (e > 0 && e < mn) mn = e;
+            ov = mn;
           }
-          const r = w / 2;
-          for (let gy = 0; gy < GH; gy++)
-            for (let gx = 0; gx < GW; gx++) {
-              const px = GX0 + gx - x0;
-              const py = GY0 + gy - y0;
-              const s = px * tx + py * ty;
-              const v = px * nx + py * ny;
-              if (s < 0 || s > len || Math.abs(v) > r) continue;
-              const vv = v / r;
-              let c = vv > 0.45 ? 3 : vv < -0.7 ? 1 : 2;
-              const groove = Math.sin(s * 0.7 + Math.round(vv * 2) * 2.3 + x0) > 0.62 && Math.abs(vv) < 0.6;
-              if (groove && s / len > 0.3) c = 4;
-              LOGCOL[gy * GW + gx] = c;
-            }
         }
+        l2[p] = ov;
       }
-      flameCv = HD.canvas(GW, GH, true);
-      flameCtx = flameCv.getContext('2d');
-      flameImg = flameCtx.createImageData(GW, GH);
-      LV = new Uint8Array(GW * GH);
-      LV2 = new Uint8Array(GW * GH);
-      FLD = new Float32Array(GW * GH);
-
-      // coal bed: an ellipse of chunks in the ring, hottest under the flames
-      const r = HD.rng(1313);
-      COALS = [];
-      const ccx = CX;
-      const ccy = BASE + 0.5;
-      const rx = o.coalRx;
-      const ry = o.coalRy;
-      const cw = o.chunkW;
-      const chh = o.chunkH;
-      for (let y = KY0; y < KY0 + KH; y++)
-        for (let x = KX0; x < KX0 + KW; x++) {
-          const dx = (x + 0.5 - ccx) / rx;
-          const dy = (y + 0.5 - ccy) / ry;
-          const d2 = dx * dx + dy * dy;
-          if (d2 > 1) continue;
-          if (logAt(x, y)) continue;
-          // chunks: 3x2 cells with their own heat; dark seams between chunks
-          const cxi = Math.floor((x - KX0 + (y & 1)) / cw);
-          const cyi = Math.floor((y - KY0) / chh);
-          const cl = 100 + cyi * 31 + cxi;
-          const seam = (x - KX0 + (y & 1)) % cw === 0 && HD.hash(cl, 1, 2) < 0.6;
-          const hot = 1 - Math.sqrt(d2);
-          let base = 0.18 + hot * 0.62 + (HD.hash(cl, 9, 9) - 0.5) * 0.35 + (r() - 0.5) * 0.08;
-          if (seam) base -= 0.3;
-          COALS.push({ x, y, base, cl, per: 2.2 + HD.hash(cl, 4, 4) * 2.8 });
-        }
-      coalCv = HD.canvas(KW, KH, true);
-      coalCtx = coalCv.getContext('2d');
-      coalImg = coalCtx.createImageData(KW, KH);
     }
-
-    function lights(t, Lt) {
-      const st = flameHeight(t);
-      const f = st.f;
-      const pp = popState(t);
-      let pop = pp.tau >= 0 && pp.tau < 0.35 ? 0.3 * (1 - pp.tau / 0.35) : 0;
-      // the bonfire's big light swells into a pop instead of jumping
-      if (SOFT_POP) pop = pp.tau >= 0 && pp.tau < 0.45 ? 0.24 * (pp.tau < 0.1 ? pp.tau / 0.1 : 1 - (pp.tau - 0.1) / 0.35) : 0;
-      // 1px jitter of the light centre at 12 fps follows the dancing tongues
-      const ts = T.step(t, 12);
-      const jx = Math.round((T.noise(ts, 0.5, 61) - 0.5) * 2.4 * S);
-      const jy = Math.round((T.noise(ts, 0.6, 62) - 0.5) * 1.6 * S);
-      const cy = BASE - Math.round(st.h * 0.42);
-      const snow = SNOW_GROUND[HD.edition.ground];
-      if (snow) {
-        // bright snow: the same fire relights it far harder than wet ground, so
-        // the light is gentler and tighter there (keeps the warm pocket precious)
-        const k = snow.k;
-        Lt.add({
-          x: CX + jx + 1,
-          y: cy + jy,
-          r: Math.round(LT.r * snow.r),
-          color: HD.LIGHT.fire,
-          i: (LT.i0 + LT.i1 * f + 0.15 * st.flare + pop) * k,
-          pow: snow.pow,
-          halo: { r: LT.haloR, a: LT.haloA, y: cy + 2 * S },
-        });
-        Lt.add({
-          x: CX + jx,
-          y: BASE - 3 * S,
-          r: LT.poolR,
-          ry: LT.poolRy,
-          color: HD.LIGHT.fire,
-          i: (LT.p0 + LT.p1 * f + pop * 0.3) * k,
-          bands: 4,
-          pow: 2.2,
-        });
-        return;
-      }
-      // the bonfire's big light keeps a 1px jitter; its base pool carries the dance
-      const mjx = JS === S ? jx : Math.round((T.noise(ts, 0.5, 61) - 0.5) * 2.4 * JS);
-      const mjy = JS === S ? jy : Math.round((T.noise(ts, 0.6, 62) - 0.5) * 1.6 * JS);
-      Lt.add({
-        x: CX + mjx + 1,
-        y: cy + mjy,
-        r: LT.r,
-        color: HD.LIGHT.fire,
-        i: LT.i0 + LT.i1 * f + 0.15 * st.flare + pop,
-        halo: { r: LT.haloR, a: LT.haloA, y: cy + 2 * S },
-      });
-      // tighter, hotter pool near the base: logs, stones, the ground at the ring
-      Lt.add({
-        x: CX + jx,
-        y: BASE - 3 * S,
-        r: LT.poolR,
-        ry: LT.poolRy,
-        color: HD.LIGHT.fire,
-        i: LT.p0 + LT.p1 * f + pop * 0.3,
-        bands: 4,
-        pow: 2.2,
-      });
+    const d = flameImg.data;
+    d.fill(0);
+    for (let p = 0, q = 0; p < GW * GH; p++, q += 4) {
+      const v = l2[p];
+      if (v === 0) continue;
+      const col = FIRE[BAND_COL[v - 1]];
+      d[q] = col[0];
+      d[q + 1] = col[1];
+      d[q + 2] = col[2];
+      d[q + 3] = 255;
     }
-
-    return { init, lights, drawFlames, drawCoals, drawSparks, flameHeight, CX, BASE, S };
+    flameCtx.putImageData(flameImg, 0, 0);
+    g.em.sprite(flameCv, gx0, gy0);
   }
 
-  // ---- the two rigs ---------------------------------------------------------------
-  const CAMP_LOGS = [
-    // [x0, y0, x1, y1, w] — the two crossing logs in front of the flame body
-    [C.x + 16, LCY - 1, C.x - 5, LCY - 14, 4.6],
-    [C.x - 15, LCY - 2, C.x + 6, LCY - 14, 5.0],
-  ];
-  const camp = makeRig({
-    S: 1,
-    FH: C.flameH,
-    HALFW: C.flameW / 2,
-    gx: 22,
-    gy: 50,
-    GW: 46,
-    GH: 53,
-    kx: 16,
-    ky: 6,
-    KW: 33,
-    KH: 10,
-    NW: 32,
-    NH: 48,
-    logs: CAMP_LOGS,
-    logOccY: LCY - 10, // above this the flames lick over the logs
-    nBlob: 18,
-    nSpark: 56,
-    blobLife: 1,
-    sparkLife: 1,
-    v0a: 34,
-    v0b: 40,
-    bigP: 0.12,
-    popExtra: 0,
-    popV: 1,
-    coalRx: 13.5,
-    coalRy: 3.4,
-    chunkW: 3,
-    chunkH: 2,
-    light: { r: 122, i0: 0.8, i1: 0.42, haloR: 34, haloA: 0.15, poolR: 40, poolRy: 30, p0: 0.16, p1: 0.16 },
-  });
-
-  // bonfire: the same fire ~1.6x. The log teepee is drawn by props-seasons.js
-  // (feet in a ring, leaning in to an apex ~34 px up); its four front-facing
-  // logs are mirrored here so they hide the lower flames and read as charred
-  // silhouettes against the fire. Each carries its own occlusion line: the
-  // outer logs hide flame up to y 197, the inner pair only low down, so the
-  // fire licks out between and over them. The back-centre log stays behind.
-  const BS = 1.6;
-  const BX = C.x;
-  const BY = C.base - 1;
-  const BAPEX = [BX + 1, BY - 34];
-  const BON_LOGS = [
-    [BX - 17, BY - 1, BAPEX[0] - 2, BAPEX[1], 4.6, BY - 28],
-    [BX - 9, BY - 3, BAPEX[0] + 2, BAPEX[1] + 1, 4.2, BY - 18],
-    [BX + 5, BY - 3, BAPEX[0] - 2, BAPEX[1] + 2, 4.4, BY - 18],
-    [BX + 16, BY - 1, BAPEX[0] + 2, BAPEX[1], 4.8, BY - 28],
-  ];
-  // the back-centre log (behind the flames; painted as charcoal where it shows)
-  const BON_BACK = [[BX - 2, BY - 4, BAPEX[0] - 2, BAPEX[1] + 1, 3.8]];
-  const bon = makeRig({
-    S: BS,
-    FH: C.flameH * BS,
-    HALFW: (C.flameW / 2) * BS,
-    gx: 36,
-    gy: 82,
-    GW: 74,
-    GH: 85,
-    kx: 26,
-    ky: 7,
-    KW: 53,
-    KH: 14,
-    NW: 48,
-    NH: 72,
-    logs: BON_LOGS,
-    backLogs: BON_BACK,
-    charLogs: true,
-    rootK: 0.8,
-    kN0: 0.3,
-    bandTh: [0.1, 0.22, 0.38, 0.56, 0.78, 1.08, 1.46],
-    jitterS: 1,
-    safeFade: true,
-    softPop: true,
-    logOccY: LCY - 16,
-    nBlob: 30,
-    nSpark: 96,
-    blobLife: 1.18,
-    sparkLife: 1.2,
-    v0a: 40,
-    v0b: 50,
-    bigP: 0.16,
-    popExtra: 4,
-    popV: 1.2,
-    coalRx: 21.6,
-    coalRy: 5.4,
-    chunkW: 4,
-    chunkH: 3,
-    light: { r: 145, i0: 1.0, i1: 0.3, haloR: 50, haloA: 0.16, poolR: 62, poolRy: 44, p0: 0.22, p1: 0.2 },
-  });
-
-  /** the rig for the current edition (read at draw time), or null for 'none' */
-  function rig() {
-    const f = HD.edition.fire;
-    return f === 'campfire' ? camp : f === 'bonfire' ? bon : null;
+  // ---- bowl: back half, coals, front half ---------------------------------------
+  function flickLevel(t, seed) {
+    const f = T.flicker(T.step(t, 12), seed, 1.1);
+    return f > 0.62 ? 0 : f > 0.3 ? 1 : 2;
   }
-  HD._fire = { makeRig, rig, camp, bon, tick, sparkCol, FIRE };
 
-  // ---- module ---------------------------------------------------------------------------
+  function drawBack(g, t, cx, base) {
+    const C = sunlit() ? SUN : NIGHT;
+    const e = g.em;
+    // a dark contact shadow on the pavers (scene paint: by day the cast
+    // shadow is an L.shade in lights(); at night the fire's pool warms it)
+    g.hline(cx - 8, cx + 8, base, C.shadow);
+    g.hline(cx - 5, cx + 5, base + 1, C.shadow);
+    const lvB = flickLevel(t, 5);
+    // back rim (lit from the inside)
+    for (const [dy, a, b] of BACK) e.hline(cx + a, cx + b, base + dy, C.rimBack[Math.min(2, lvB + (Math.abs(a) > 8 ? 1 : 0))]);
+    // inner back wall: glows above the coals, brighter in the middle
+    const w = OPEN['-9'];
+    for (let x = -w; x <= w; x++) e.px(cx + x, base - 9, C.wall[Math.min(2, lvB + (Math.abs(x) > 3 ? 1 : 0))]);
+    drawCoals(g, t, cx, base);
+  }
+
+  function drawCoals(g, t, cx, base) {
+    const ts = T.step(t, 12);
+    const d = coalImg.data;
+    d.fill(0);
+    const glow = T.flicker(t, 3, 0.6);
+    const tk = tick(t, 12);
+    for (const k of COALS) {
+      const pulse = T.noise(ts, k.per, k.cl);
+      let v = k.base + (pulse - 0.5) * 0.5 + (glow - 0.5) * 0.2;
+      if (k.base > 0.55 && HD.hash(k.cl, tk, 5) > 0.985) v += 0.3;
+      const ci = v < 0.14 ? 2 : v < 0.3 ? 3 : v < 0.45 ? 4 : v < 0.58 ? 5 : v < 0.7 ? 6 : v < 0.82 ? 7 : v < 0.93 ? 8 : 9;
+      const col = FIRE[ci];
+      const q = (k.dx + HW) * 4;
+      d[q] = col[0];
+      d[q + 1] = col[1];
+      d[q + 2] = col[2];
+      d[q + 3] = 255;
+    }
+    coalCtx.putImageData(coalImg, 0, 0);
+    g.em.sprite(coalCv, cx - HW, base + RIM_Y);
+  }
+
+  function drawFront(g, t, cx, base) {
+    const C = sunlit() ? SUN : NIGHT;
+    const e = g.em;
+    const lv = flickLevel(t, 5);
+    // the lip's top surface: hot in the middle where the flames lean over it,
+    // cooler towards the ends
+    const lipY = base + BODY[0][0];
+    for (let x = -HW; x <= HW; x++) {
+      const k = Math.abs(x) / HW;
+      e.px(cx + x, lipY, C.rimHot[Math.min(2, lv + (k > 0.5 ? 1 : 0) + (k > 0.85 ? 1 : 0))]);
+    }
+    // outer face: the rolled lip, then darker towards the stem, the ends of
+    // each row a shade darker so the bowl reads round
+    for (let i = 1; i < BODY.length; i++) {
+      const [dy, hw] = BODY[i];
+      e.hline(cx - hw, cx + hw, base + dy, C.face[i - 1]);
+      if (i < BODY.length - 1) {
+        e.px(cx - hw, base + dy, C.edge[i - 1]);
+        e.px(cx + hw, base + dy, C.edge[i - 1]);
+      }
+    }
+    // rim light on one side of the face (cold moonlit edge at night, the
+    // low sun at golden hour)
+    const sx = C.sheenX;
+    const [d1, w1] = BODY[1];
+    const [d2, w2] = BODY[2];
+    e.hline(cx + sx * (w1 - 1), cx + sx * (w1 - 3), base + d1, C.sheen);
+    e.px(cx + sx * (w2 - 1), base + d2, C.sheen);
+    // stone pedestal: a lit top edge, a shaded side away from the light
+    const [p0, q0] = PLINTH[0];
+    const [p1, q1] = PLINTH[1];
+    e.hline(cx - q0, cx + q0, base + p0, C.stone[0]);
+    e.hline(cx - q1, cx + q1, base + p1, C.stone[1]);
+    e.px(cx - sx * q1, base + p1, C.stone[2]);
+    e.px(cx - sx * q0, base + p0, C.stone[1]);
+  }
+
+  // ---- sparks --------------------------------------------------------------------
+  const POP_P = 9;
+  function popState(t) {
+    const c = T.cycle(t, 0, POP_P, 4243);
+    const at = c.rnd(1) * 3;
+    return { tau: c.age * c.P - at, c: c.c, x: c.rnd(2), n: 3 + Math.floor(c.rnd(3) * 2) };
+  }
+
+  function drawSparks(g, t, cx, base) {
+    const day = sunlit();
+    const root = base + RIM_Y - 2;
+    const nS = day ? N_SPARK >> 1 : N_SPARK;
+    for (let i = 0; i < nS; i++) {
+      const per = 2.4 + HD.hash(i, 3, 17) * 2.4;
+      const c = T.cycle(t, i, per, 919);
+      const life = 0.9 + c.rnd(0) * 1.6;
+      const tau = c.age * c.P;
+      if (tau > life) continue;
+      if (c.rnd(9) < 0.3) continue;
+      const a = tau / life;
+      const x0 = cx + (c.rnd(1) - 0.45) * 9;
+      const y0 = root - 3 - c.rnd(2) * 6;
+      const v0 = 18 + c.rnd(3) * 22;
+      const k = 1 + c.rnd(4) * 1;
+      const rise = v0 * k * (1 - Math.exp(-tau / k));
+      const drift = (2.5 + c.rnd(5) * 5) * Math.pow(tau, 1.3);
+      const wa = 0.6 + c.rnd(6) * 1.4;
+      const wob = wa * Math.sin(tau * (3 + c.rnd(7) * 4) + c.rnd(8) * 6.283) * Math.min(1, tau * 1.5);
+      const x = R(x0 + drift + wob);
+      const y = R(y0 - rise);
+      const tw = HD.hash(i, tick(t, 14), c.c, 2) < 0.12 ? -0.12 : 0;
+      const temp = (1 - a) * (0.7 + 0.3 * c.rnd(10)) + tw;
+      if (temp < 0.05) continue;
+      g.px(x, y, sparkCol(temp));
+      const sp = v0 * Math.exp(-tau / k);
+      if (sp > 24 && temp > 0.45) g.px(x, y + 1, sparkCol(temp - 0.3));
+    }
+    // ember pop: a small fan of sparks now and then
+    const pp = popState(t);
+    if (pp.tau >= 0 && pp.tau < 1.2) {
+      const px0 = cx - 3 + pp.x * 6;
+      const py0 = root - 2;
+      for (let j = 0; j < pp.n; j++) {
+        const r0 = HD.hash(pp.c, j, 31, 1);
+        const r1 = HD.hash(pp.c, j, 31, 2);
+        const r2 = HD.hash(pp.c, j, 31, 3);
+        const life = 0.45 + r2 * 0.6;
+        const tau = pp.tau;
+        if (tau > life) continue;
+        const ang = -Math.PI / 2 + (r0 - 0.5) * 2;
+        const v = 26 + r1 * 22;
+        const vx = Math.cos(ang) * v;
+        const vy = Math.sin(ang) * v;
+        const x = R(px0 + vx * tau);
+        const y = R(py0 + vy * tau + 0.5 * 60 * tau * tau);
+        const temp = 1 - tau / life;
+        g.px(x, y, sparkCol(temp));
+        if (tau < 0.2) g.px(x - Math.sign(vx), y + 1, sparkCol(temp - 0.35));
+      }
+    }
+  }
+
+  // ---- lights ------------------------------------------------------------------
+  function lights(t, Lt, cx, base) {
+    const st = flameHeight(t);
+    const f = st.f;
+    const pp = popState(t);
+    const pop = pp.tau >= 0 && pp.tau < 0.4 ? 0.1 * (pp.tau < 0.1 ? pp.tau / 0.1 : 1 - (pp.tau - 0.1) / 0.3) : 0;
+    const lt = HD.light ? HD.light() : null;
+    const mode = lt ? lt.mode : 'night';
+    // lamps are dimmed by day (engine): the fire keeps a little more of its
+    // warmth at golden hour; by full day it is a small pocket
+    const boost = mode === 'golden' ? 1.15 : mode === 'day' ? 1.25 : 1;
+    const ts = T.step(t, 12);
+    const jx = R((T.noise(ts, 0.5, 61) - 0.5) * 1.6);
+    const jy = R((T.noise(ts, 0.6, 62) - 0.5) * 1.2);
+    const cy = base + RIM_Y - R(st.h * 0.45);
+    // by day the bowl casts a short shadow away from the sun
+    if (lt && lt.day > 0 && lt.sun) {
+      const dir = lt.sun.x > cx ? -1 : 1;
+      const len = lt.mode === 'day' ? 6 : 15;
+      Lt.shade({
+        poly: [
+          [cx - 9, base - 1],
+          [cx + 9, base - 1],
+          [cx + 9 + dir * len, base + 2],
+          [cx - 9 + dir * len, base + 2],
+        ],
+        k: 0.45,
+      });
+    }
+    Lt.add({
+      x: cx + jx,
+      y: cy + jy,
+      r: 70,
+      ry: 56,
+      color: HD.LIGHT.fire,
+      i: (0.34 + 0.16 * f + 0.06 * st.flare + pop) * boost,
+      halo: { r: 18, a: 0.16, y: cy + 1 },
+    });
+    // a hotter, tighter pool on the pavers and the cats right at the pit
+    Lt.add({
+      x: cx + jx,
+      y: base - 3,
+      r: 34,
+      ry: 14,
+      color: HD.LIGHT.fire,
+      i: (0.1 + 0.07 * f + pop * 0.3) * boost,
+      bands: 4,
+      pow: 2,
+      clip: { x0: 0, y0: base - 16, x1: HD.W - 1, y1: HD.H - 1 },
+    });
+  }
+
+  // ---- init ----------------------------------------------------------------------
+  function init() {
+    NOISE = bakeNoise(HD.rng(4711), NW, NH);
+    flameCv = HD.canvas(GW, GH, true);
+    flameCtx = flameCv.getContext('2d');
+    flameImg = flameCtx.createImageData(GW, GH);
+    LV = new Uint8Array(GW * GH);
+    LV2 = new Uint8Array(GW * GH);
+    FLD = new Float32Array(GW * GH);
+    // coal bed in the opening's front row, hottest at the centre
+    const r = HD.rng(1313);
+    COALS = [];
+    for (const dy of [RIM_Y]) {
+      const w = OPEN[String(dy)];
+      for (let dx = -w; dx <= w; dx++) {
+        const cxi = Math.floor((dx + w + (dy & 1)) / 3);
+        const cl = 100 + (dy + 8) * 31 + cxi;
+        const seam = (dx + w + (dy & 1)) % 3 === 0 && HD.hash(cl, 1, 2) < 0.6;
+        const hot = 1 - Math.abs(dx) / (w + 1);
+        let b = 0.2 + hot * 0.6 + (HD.hash(cl, 9, 9) - 0.5) * 0.35 + (r() - 0.5) * 0.08;
+        if (seam) b -= 0.28;
+        COALS.push({ dx, dy, base: b, cl, per: 2 + HD.hash(cl, 4, 4) * 2.6 });
+      }
+    }
+    coalCv = HD.canvas(KW, KH, true);
+    coalCtx = coalCv.getContext('2d');
+    coalImg = coalCtx.createImageData(KW, KH);
+  }
+
+  /**
+   * For other modules (atmosphere's smoke): the live fire pit's smoke column,
+   * or null when there is none: {x, y (flame tip), base, h (flame height), f
+   * (flicker 0..1)}.
+   */
+  function pit(t) {
+    const a = pitAnchor();
+    if (!a) return null;
+    const st = flameHeight(T.step(t, 12));
+    return { x: a.x, y: R(a.base + RIM_Y - st.h), base: a.base, h: st.h, f: st.f };
+  }
+
+  HD._fire = { tick, sparkCol, FIRE, pit };
+  /** nominal flame-tip y of the current place's fire pit (atmosphere's smoke emitter), or null */
+  HD.firepitTop = function () {
+    const a = pitAnchor();
+    return a ? R(a.base) + RIM_Y - FH + 1 : null;
+  };
+
+  // ---- module --------------------------------------------------------------------
   HD.module('fire', {
-    init() {
-      camp.init();
-      bon.init();
-    },
-
+    init,
     lights(t, Lt) {
-      const r = rig();
-      if (r) r.lights(t, Lt);
+      const a = pitAnchor();
+      if (a) lights(t, Lt, R(a.x), R(a.base));
     },
-
     passes: [
       {
         layer: 'scene',
-        z: 42,
-        id: 'coals',
+        z: 38,
+        id: 'pit-back',
         draw(g, t) {
-          const r = rig();
-          if (r) r.drawCoals(g, t);
+          const a = pitAnchor();
+          if (a) drawBack(g, t, R(a.x), R(a.base));
         },
       },
       {
         layer: 'scene',
-        z: 44,
+        z: 39,
         id: 'flames',
         draw(g, t) {
-          const r = rig();
-          if (r) r.drawFlames(g, t);
+          const a = pitAnchor();
+          if (a) drawFlames(g, t, R(a.x), R(a.base));
+        },
+      },
+      {
+        layer: 'scene',
+        z: 40,
+        id: 'pit-front',
+        draw(g, t) {
+          const a = pitAnchor();
+          if (a) drawFront(g, t, R(a.x), R(a.base));
         },
       },
       {
@@ -733,8 +611,8 @@
         z: 35,
         id: 'sparks',
         draw(g, t) {
-          const r = rig();
-          if (r) r.drawSparks(g, t);
+          const a = pitAnchor();
+          if (a) drawSparks(g, t, R(a.x), R(a.base));
         },
       },
     ],

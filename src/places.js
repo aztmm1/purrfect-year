@@ -18,7 +18,7 @@
  *   catWindow  {x, y, w, h}: glass of the window the black cat sits in
  *   mascot     {x, y}: top-left of the series cat's head when he sits in it
  *              (HD.mascot.draw; 9 px wide, 12 px tall plus the tail)
- *   partner    {x, base}: where his wife sits beside him in that window
+ *   partner    {x, base}: where a second cat sits beside him in that window
  *   entrance   {x0, x1, y0, y1}: the doors (the niece and visitors use it)
  *   sign       {x, y, w, h}: where the small AZTMM plaque or sign goes
  *   stages     named standing areas {x0, x1, base} for groups of cats
@@ -56,7 +56,7 @@
       stages: {
         door: { x0: 206, x1: 236, base: 222 }, // in front of the lobby
         family: { x0: 160, x1: 250, base: 222 },
-        group: { x0: 330, x1: 432, base: 223 }, // her friends in the plaza
+        group: { x0: 330, x1: 432, base: 223 }, // a group in the plaza
       },
       puddles: [
         { x: 180, y: 218, rx: 16, ry: 2, mirror: 206, k: 0.5 },
@@ -78,7 +78,7 @@
         [176, 57, 300, 206],
         [300, 44, 338, 206],
       ],
-      catWindow: { x: 205, y: 131, w: 15, h: 16 }, // his one window, alone
+      catWindow: { x: 205, y: 131, w: 15, h: 16 }, // his one window
       mascot: { x: 208, y: 134 },
       partner: null,
       balcony: null,
@@ -89,7 +89,7 @@
       firepit: { x: 103, base: 218 },
       stages: {
         door: { x0: 306, x1: 334, base: 222 },
-        passby: { x0: 150, x1: 330, base: 223 }, // she and her friends walk past
+        passby: { x0: 150, x1: 330, base: 223 }, // a group walks past
         group: { x0: 30, x1: 132, base: 223 },
       },
       puddles: [
