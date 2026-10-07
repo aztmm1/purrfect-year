@@ -264,7 +264,7 @@
       tripleFallback: [66.5, 186.5],
       quiet: [6, 10], // seconds kept clear before / after the triple
       maxIdle: 14,
-      glow: { white: SILVER_GLOW, silver: SILVER_GLOW }, // white shells glow silver here (the tricolour reads)
+      glow: { white: SILVER_GLOW }, // white shells (and the silver willows) glow silver here
       clip: { x0: 0, y0: 40, x1: HD.W - 1, y1: HD.H - 1 }, // the yard on the left catches the flashes too
     },
   };
@@ -707,7 +707,7 @@
         far: depth < 0.2,
         story: true,
         R: (type === 'willow' ? cfg.R[0] + 8 + 5 * depth : cfg.R[0] + cfg.R[1] * depth) * s.size * (type === 'crackle' ? 0.8 : 1),
-        col: type === 'willow' ? 'silver' : null,
+        col: type === 'willow' ? 'white' : null, // a Story willow burns silver (drawBurst)
         col2: null,
         fixed: false,
         tilt: 0.35 + 0.45 * rnd(),
@@ -821,7 +821,7 @@
     // deal the colours in launch order: the palette goes round in seeded
     // groups (a fresh shuffle per group, never the same colour twice in a
     // row), and gold now and then, at most about one shell in goldEvery.
-    // Willows are already silver; the triple keeps its own colours.
+    // Willows are already white (silver); the triple keeps its own colours.
     const pal = cfg.palette || s.colors;
     const crnd = HD.rng(seed ^ 0x2c5e);
     let bag = [];
@@ -840,7 +840,7 @@
     };
     for (const sh of list) {
       if (sh.fixed || sh.col) {
-        last = sh.col === 'silver' ? 'white' : sh.col;
+        last = sh.col;
         continue;
       }
       sinceGold++;
@@ -1006,7 +1006,8 @@
     const type = sh.type;
     const story = !!sh.story;
     const RP = story ? SRAMPS : RAMPS;
-    const ramp = RP[sh.col] || RAMPS.gold;
+    // a Story willow is a silver-white glitter willow
+    const ramp = (story && type === 'willow' ? SRAMPS.silver : RP[sh.col]) || RAMPS.gold;
     const ramp2 = sh.col2 ? RP[sh.col2] : null;
     const k = DRAG[type];
     const G = GRAV[type] * (sh.sag || 1);
@@ -1269,7 +1270,7 @@
     for (const sh of list) {
       const fl = lightOf(sh) * (sh.R / 24) * (s.lightK || 1);
       if (fl <= 0.01) continue;
-      const col = LF[sh.col === 'silver' ? 'white' : sh.col] || LF.gold;
+      const col = LF[sh.col] || LF.gold;
       const a = AGG[zoned && sh.zone > 0 ? 1 : 0];
       a[0] += fl;
       a[1] += sh.bx * fl;

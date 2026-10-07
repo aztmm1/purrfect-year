@@ -311,7 +311,11 @@
     return { dens, along, d, half };
   }
 
-  function genStars(ed, lk, im) {
+  /**
+   * top: optional per-column skyline top (city chapters); stars closer than
+   * 4px above a roof, mast or crown would read as roof lights, so none there
+   */
+  function genStars(ed, lk, im, top) {
     const dens = ed.stars || 0;
     const tw = [];
     if (dens <= 0) return tw;
@@ -355,6 +359,7 @@
       if (lk.dusk && y > 14 + rng() * 52) continue; // late dusk: only the first stars, high up
       if (ed.backdrop && !lk.dusk && y > 64 + rng() * 40) continue; // city glow hides the low ones
       if (x > 34 && x < 104 && y > 92) continue; // leave the chapel's silhouette clean
+      if (top && y > top[x] - 4) continue; // and the skyline's
       if (x >= ts.x0 && x <= ts.x1 && y >= ts.y0 && y <= ts.y1 && rng() < 0.7) continue; // calm title area
       if (mr) {
         const dx = x - MOON.x;
@@ -450,7 +455,8 @@
         }
     }
     paintHalo(im, lk, ed.moon);
-    const twinkles = genStars(ed, lk, im);
+    const city = ed.backdrop ? cityOf(ed) : null;
+    const twinkles = genStars(ed, lk, im, city && city.top);
     if (ed.moon === 'full') K.paintMoon(im, MOON.x, MOON.y, MOON.r, P.moon);
     else if (ed.moon === 'harvest') K.paintMoon(im, MOON.x, MOON.y, HARVEST_R, HARVEST_RAMP);
     else if (ed.moon === 'crescent') paintCrescent(im, lk);
@@ -1539,16 +1545,17 @@
     C.row(0, W, 172, 6, 'far', 6, 13, 0.25, 11);
     // the Back Bay towers (left gap)
     C.row(0, 31, 160, 4, 'mid', 7, 11, 0.1, 12);
-    // crown-topped glass tower: its lit crown is a soft landmark
+    // crown-topped glass tower: its softly lit lattice crown is a landmark
     const cr = C.tower({ x0: 33, x1: 42, top: 120, win: { dx: 2, dy: 2, p: 0.16 }, glass: true });
     C.fill(cr, 34, 117, 41, 119);
+    const crownRow = (y) => Math.round(Math.sqrt(Math.max(0, 1 - ((116 - y) / 9.5) ** 2)) * 4);
     for (let y = 108; y <= 116; y++) {
-      const h = Math.round(Math.sqrt(Math.max(0, 1 - ((116 - y) / 9.5) ** 2)) * 4);
-      for (let x = 37.5 - h; x <= 37.5 + h; x++) C.S(Math.round(x), y, (Math.round(x) + y) % 2 ? mix(P.moon[1], C.col.mid, 0.55) : mix(P.moon[2], C.col.mid, 0.38), cr.id);
+      const h = crownRow(y);
+      for (let x = 37.5 - h; x <= 37.5 + h; x++) C.S(Math.round(x), y, C.col.mid, cr.id);
     }
-    C.S(37, 107, mix(P.moon[2], C.col.mid, 0.4), cr.id);
-    C.S(38, 107, mix(P.moon[2], C.col.mid, 0.4), cr.id);
-    C.S(37, 106, mix(P.moon[1], C.col.mid, 0.5), cr.id);
+    C.S(37, 107, C.col.mid, cr.id);
+    C.S(38, 107, C.col.mid, cr.id);
+    C.S(37, 106, C.col.mid, cr.id);
     C.tower({ x0: 44, x1: 50, top: 142, win: { dx: 2, dy: 3, p: 0.22 } });
     // Prudential-style: a plain box with a narrower cap and a tall mast
     const pru = C.tower({ x0: 51, x1: 62, top: 104, win: { dx: 2, dy: 2, p: 0.2 }, winTop: 108 });
@@ -1562,58 +1569,89 @@
     const sl = C.tower({ x0: 69, x1: 80, top: 94, col: mix(C.col.mid, P.night[5], 0.22), win: { dx: 2, dy: 2, p: 0.08 }, glass: 'mullion', winTop: 96 });
     for (let y = 94; y <= SHORE; y++) C.S(74, y, mix(sl.col, N[0], 0.35), sl.id); // the face notch
     C.fill(sl, 78, 94, 80, 95, mix(C.col.mid, P.night[5], 0.1));
-    C.tower({ x0: 64, x1: 68, top: 136, win: { dx: 2, dy: 2, p: 0.25 } });
+    C.tower({ x0: 64, x1: 68, top: 136, win: { dx: 2, dy: 3, p: 0.25 } });
     C.tower({ x0: 82, x1: 93, top: 126, win: { dx: 2, dy: 3, p: 0.2 } });
     C.tower({ x0: 95, x1: 104, top: 138, win: { dx: 2, dy: 2, p: 0.24 } });
     C.row(106, 166, 156, 6, 'mid', 6, 12, 0.13, 13);
     // right gap: Cambridge-side blocks under the tree
     C.row(296, 480, 160, 10, 'mid', 6, 14, 0.11, 14);
-    if (home) {
-      // the cable-stayed bridge from the AZTMM logo: two pylons with fanned
-      // stays flanking the towers, the deck crossing the river behind the rooftops
-      const pc = mix(C.col.mid, P.moon[1], 0.12);
-      const cab = mix(C.col.mid, mix(P.moon[2], P.spirit[3], 0.3), 0.32);
-      const deck = 180;
-      for (const px of [18, 150]) {
-        for (let y = 116; y <= deck + 4; y++) {
-          C.S(px, y, pc, -3);
-          C.S(px + 1, y, mix(pc, N[1], 0.3), -3);
-        }
-        C.S(px, 115, pc, -3);
-        for (let k = 0; k < 6; k++) {
-          const ay = 122 + k * 3;
-          const reach = 8 + k * 5;
-          for (const s of [-1, 1]) {
-            const bx = s < 0 ? px - reach : px + 1 + reach;
-            C.lineD(s < 0 ? px : px + 1, ay, bx, deck, cab);
-          }
-        }
-      }
-      for (let x = 0; x < 175; x++) {
-        C.S(x, deck, mix(pc, N[1], 0.15), -3);
-        C.S(x, deck + 1, mix(C.col.near, N[0], 0.2), -3);
-        if (x % 7 === 3) C.S(x, deck - 1, mix(AM[4], pc, 0.35), -3); // deck lamps
-      }
-      C.beacon(18, 115, 3.4, 0.4);
-      C.beacon(150, 115, 3.4, 0.9);
-    }
     // near: brownstone rooftops along the river, warm windows
     C.row(0, 166, 182, 3, 'near', 5, 9, 0.14, 15);
     C.row(296, 480, 184, 3, 'near', 5, 9, 0.12, 16);
     C.finish();
+    // the crown: one calm mid-tone dome with a few lit lattice ribs on the
+    // moon side and one lit ring (painted after the rims); the far half of
+    // the lower dome sits in a little shade
+    const dome = mix(C.col.mid, P.moon[1], 0.3);
+    const rib = mix(C.col.mid, P.moon[1], 0.48);
+    for (let y = 108; y <= 116; y++) {
+      const h = crownRow(y);
+      for (let x = 37.5 - h; x <= 37.5 + h; x++) {
+        const xi = Math.round(x);
+        let c = xi <= 35 && y > 110 ? mix(dome, C.col.mid, 0.35) : dome;
+        if ((y === 113 && xi >= 35) || ((xi === 39 || xi === 41) && y >= 110)) c = rib;
+        C.S(xi, y, c, cr.id);
+      }
+    }
+    C.S(37, 107, dome, cr.id);
+    C.S(38, 107, rib, cr.id);
+    C.S(37, 106, dome, cr.id);
+    if (home) zakimBridge(C);
     C.water(190, 209, { dark: 0.55 });
   }
-  /** dithered line for cables: every other pixel along the run, lighter at the top */
-  City.prototype.lineD = function (x0, y0, x1, y1, c) {
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-    for (let i = 0; i <= n; i++) {
-      const x = Math.round(x0 + ((x1 - x0) * i) / n);
-      const y = Math.round(y0 + ((y1 - y0) * i) / n);
-      if (this.O(x, y) >= 0 && this.b[this.O(x, y)].layer !== 'far') continue; // behind the towers
-      if (i % 2 && i > n * 0.4) continue;
-      this.S(x, y, c);
+  /**
+   * The cable-stayed bridge from the AZTMM logo (home chapter), nearer than
+   * the skyline: two inverted-Y pylons whose legs straddle the deck and join
+   * into one tapered spire, a fan of continuous stays from the spire's upper
+   * third, and a lit deck with lamps running low across the river, in front
+   * of the rooftops. Both fans sit in the open left gap, clear of the house.
+   */
+  function zakimBridge(C) {
+    const pc = mix(C.col.mid, P.moon[1], 0.26); // pale concrete, lit on the moon side
+    const pcD = mix(pc, N[1], 0.38);
+    const cab = mix(C.col.mid, mix(P.moon[2], P.spirit[3], 0.3), 0.3);
+    const deckY = 186;
+    const S = (x, y, c) => C.S(x, y, c, -3);
+    const line = (x0, y0, x1, y1, c) => {
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= n; i++) S(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), c);
+    };
+    // pylons: [x, fan reach left, fan reach right]
+    for (const [px, rl, rr] of [[18, 26, 30], [132, 30, 25]]) {
+      // the stays first, so the pylon stands in front of them: a fan from
+      // the upper third of the spire, the top stay reaching farthest
+      for (let k = 0; k < 5; k++) {
+        const ay = 115 + k * 2;
+        const f = 1 - k * 0.19;
+        line(px, ay, px - Math.round(rl * f), deckY - 1, cab);
+        line(px + 1, ay, px + 1 + Math.round(rr * f), deckY - 1, cab);
+      }
+      // the legs: 6 px apart at the deck, converging to meet at y 132
+      for (let y = 132; y <= deckY + 4; y++) {
+        const sp = Math.round(((y - 132) / (deckY - 132)) * 3);
+        S(px - sp, y, pc);
+        S(px + 1 + sp, y, pcD);
+      }
+      // the spire: 2 px, tapering to a 1 px tip at y 112
+      for (let y = 117; y < 132; y++) {
+        S(px, y, pc);
+        S(px + 1, y, pcD);
+      }
+      for (let y = 112; y < 117; y++) S(px, y, pc);
+      C.beacon(px, 111, 3.4, px < 100 ? 0.4 : 0.9);
     }
-  };
+    // the deck: a lit edge, a darker fascia, lamps along it
+    for (let x = 0; x < 176; x++) {
+      S(x, deckY, mix(pc, P.moon[1], 0.1));
+      S(x, deckY + 1, mix(pc, N[1], 0.25));
+      S(x, deckY + 2, mix(C.col.near, N[0], 0.3));
+      if (x % 8 === 4) {
+        const lamp = mix(AM[5], pc, 0.2);
+        S(x, deckY - 1, lamp);
+        C.lit.push([x, deckY - 1, lamp]);
+      }
+    }
+  }
 
   // ---------------- New York: dense towers, one tall spire, the harbour statue
   function nycCity(C) {
@@ -1866,7 +1904,7 @@
     // her helmet crest to one side (no crossbar)
     for (let x = cx - 1; x <= cx + 1; x++) Sx(x, 129, m0);
     for (let y = 126; y <= 128; y++) Sx(cx, y, sh);
-    Sx(cx + 1, 126, sh);
+    Sx(cx + 1, 125, sh);
     // warm windows along the wings
     for (let x = 24; x <= 124; x += 3) {
       if (Math.abs(x - cx) < 16) continue;
@@ -1908,9 +1946,23 @@
     else if (kind === 'la') laCity(C, ed);
     else if (kind === 'sandiego') sandiegoCity(C, ed);
     else if (kind === 'dc') dcCity(C, ed);
-    return { cv: C.canvas(), tw: C.tw, beacons: C.beacons, glints: C.glints, boats: C.boats };
+    // the skyline's top edge per column (anything painted, beacons included)
+    const top = new Int16Array(W).fill(999);
+    for (let x = 0; x < W; x++)
+      for (let y = 0; y < CITY_H; y++)
+        if (C.im.d[(y * W + x) * 4 + 3]) {
+          top[x] = y + CITY_Y;
+          break;
+        }
+    return { cv: C.canvas(), tw: C.tw, beacons: C.beacons, glints: C.glints, boats: C.boats, top };
   }
-  const cityArt = HD.perEdition(bakeCity);
+  // one bake per edition, shared by the sky (star placement) and the land pass
+  const cityCache = new Map();
+  function cityOf(ed) {
+    if (!cityCache.has(ed.id)) cityCache.set(ed.id, bakeCity(ed));
+    return cityCache.get(ed.id);
+  }
+  const cityArt = () => cityOf(HD.edition);
 
   function drawCity(g, t, art) {
     g.ctx.drawImage(art.cv, 0, CITY_Y);

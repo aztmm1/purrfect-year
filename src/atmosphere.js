@@ -348,6 +348,8 @@
 
   /**
    * screen-space keep-out mask (opaque = erase mist), soft dithered rims.
+   * Holes are ellipses {x, y, rx, ry} or boxes {box: [x0, y0, x1, y1], f}
+   * (inclusive screen rectangle whose edge fades out over f px).
    * Optional `keeps`: the mist survives only inside these ellipses.
    */
   function bakeMask(y0, h, holes, keeps, mx0, mw) {
@@ -359,6 +361,13 @@
         for (let x = X0; x < X0 + MW; x++) {
           let k = 0;
           for (const o of holes) {
+            if (o.box) {
+              const b = o.box;
+              const dx = Math.max(b[0] - x, x - b[2], 0);
+              const dy = Math.max(b[1] - (y + y0), y + y0 - b[3], 0);
+              k = Math.max(k, 1 - HD.smoothstep(0, (o.f || 2) + 1, Math.hypot(dx, dy)));
+              continue;
+            }
             const qx = (x - o.x) / o.rx;
             const qy = (y + y0 - o.y) / o.ry;
             const e = Math.sqrt(qx * qx + qy * qy);
