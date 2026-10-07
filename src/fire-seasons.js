@@ -7,8 +7,9 @@
  *   scene z 41  sparkler sticks stuck in the snow (dark, outlined: they read on lit snow)
  *   scene z 45  sparkler burning cores (emissive)
  *   fx    z 36  sparkler fizz: short radiating, forking sparks + halo
- *   lights      one aggregated, coloured flash light for all live bursts and
- *               one small white-gold light per sparkler
+ *   lights      one aggregated, coloured flash light for all live bursts (a
+ *               Summer Story show: one per sky pocket, at most two) and one
+ *               small white-gold light per sparkler
  *
  * Everything is a pure function of t. Each firework edition gets a fixed
  * choreography for the whole loop, generated once from its own seed: launch
