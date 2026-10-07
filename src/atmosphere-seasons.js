@@ -1014,14 +1014,42 @@
   // wisp after the Match Night goal cheer's three little fireworks).
   // ---------------------------------------------------------------------
   const SU = LY.summer;
-  // where the family and the chapter's set pieces stand: the yard haze and
-  // the lip wisps stay off them so the cats always read at a glance
+  const TR = LY.tree;
+  const HS = LY.house;
+  /**
+   * A stable seed offset from the whole chapter id (not its length, which 'la'
+   * and 'dc' share), so every chapter gets its own haze shapes.
+   */
+  function idSeed(id) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
+    return 20000 + ((HD.hash(h, 1031, 17, 5) * 997) | 0) * 16;
+  }
+  // the yard haze lies on the ground: it never climbs the cottage's walls and
+  // stone foundation (the focal point) and leaves the tree trunk, its roots
+  // and the fence foot beside it crisp
+  const YARD_KEEP = [
+    { box: [HS.body.x0 - 2, 0, HS.turret.x1 + 2, HS.body.base], f: 2 },
+    { x: TR.x - 2, y: 192, rx: TR.trunkW * 0.8 + 3, ry: 40 },
+  ];
+  // where the family and the chapter's set pieces stand: the yard haze stays
+  // off them so the cats always read at a glance
   const STORY_HOLES = {
     // you + partner on the porch steps; the niece's visits come by the steps
     match: [{ x: 218, y: 206, rx: 22, ry: 13 }, { x: 198, y: 217, rx: 12, ry: 11 }, { x: 270, y: 228, rx: 13, ry: 11 }],
-    nyc: [{ x: SU.bench.x + 1, y: 218, rx: 26, ry: 14 }, { x: 140, y: 214, rx: 8, ry: 14 }],
-    la: [{ x: 114, y: 224, rx: 38, ry: 16 }, { x: SU.heater.x, y: 214, rx: 9, ry: 14 }],
-    sandiego: [{ x: 114, y: 220, rx: 38, ry: 18 }, { x: SU.brickCat.x, y: 222, rx: 10, ry: 8 }, { x: SU.castle.x, y: 213, rx: 16, ry: 12 }],
+    // the bench pair, the heart lantern (on its head) and its pole
+    nyc: [{ x: SU.bench.x + 1, y: 218, rx: 26, ry: 14 }, { x: 135, y: 204, rx: 9, ry: 9 }, { x: 140, y: 216, rx: 5, ry: 12 }],
+    // the whole group, x ~126-177, and the patio heater
+    la: [{ x: 122, y: 222, rx: 52, ry: 17 }, { x: SU.heater.x, y: 214, rx: 9, ry: 14 }],
+    // the group with the shoulder rider (head at y ~208), the brick cat, the
+    // castle, and the bay: the yard haze starts at the grass line (y 200), so
+    // it never stacks on the sea mist
+    sandiego: [
+      { x: 122, y: 219, rx: 52, ry: 20 },
+      { x: SU.brickCat.x, y: 222, rx: 10, ry: 8 },
+      { x: SU.castle.x, y: 213, rx: 16, ry: 12 },
+      { box: [0, 0, W - 1, 199], f: 2 },
+    ],
     dc: [{ x: 114, y: 220, rx: 42, ry: 20 }],
     home: [{ x: 198, y: 217, rx: 12, ry: 11 }, { x: 270, y: 228, rx: 13, ry: 11 }],
   };
@@ -1029,25 +1057,53 @@
   // dusk smoke: lilac-grey with a rose highlight, so it sits in a pink sky
   // (mid values close to a dusk sky, so the thin thread never turns to beads)
   const duskSmoke = () => [mix(P.stone[6], P.blossom[5], 0.3), mix(P.stone[5], P.blossom[4], 0.28), mix(P.stone[5], P.violet[5], 0.4), mix(P.stone[4], P.violet[4], 0.45), mix(P.night[4], P.violet[3], 0.45)];
-  // per chapter: yard haze, skyline haze (cols / alpha)
+  const GREEN_GOLD = (k) => [mix(P.leaf[5], P.amber[4], k), mix(P.leaf[6], P.amber[5], k)];
+  /**
+   * Per chapter: the yard haze (cols / alpha / gain) and the skyline haze
+   * (`city`: farBands options). The skyline haze hugs the lower storeys of
+   * each city, where its own glow lifts them, rather than lying as a dotted
+   * strip on the dark water / tree strip under the buildings.
+   */
   const STORY_AIR = {
-    // Boston, a warm June night: green-gold meadow haze, a cool harbour haze
-    match: { yard: [mix(P.leaf[5], P.amber[4], 0.35), mix(P.leaf[6], P.amber[5], 0.35)], yardA: 0.32, city: [mix(P.night[5], P.amber[2], 0.22), mix(P.night[6], P.amber[3], 0.2)], cityA: 0.42 },
-    // New York on the Fourth: the skyline glows a little warmer
-    nyc: { yard: [mix(P.leaf[5], P.amber[4], 0.35), mix(P.leaf[6], P.amber[5], 0.35)], yardA: 0.30, city: [mix(P.night[5], P.amber[3], 0.3), mix(P.night[6], P.amber[4], 0.26)], cityA: 0.44 },
-    // Los Angeles: an amber smog glow over the basin, a warmer yard haze
-    la: { yard: [mix(P.leaf[4], P.amber[4], 0.5), mix(P.leaf[5], P.amber[5], 0.5)], yardA: 0.30, city: [mix(P.night[5], P.amber[3], 0.48), mix(P.night[6], P.amber[4], 0.42)], cityA: 0.5, cityGain: 1 },
+    // Boston on a June night: a cool blue harbour haze at the towers' feet
+    match: {
+      yard: GREEN_GOLD(0.35),
+      yardA: 0.3,
+      city: { cols: [mix(P.night[6], P.ice[3], 0.35), mix(P.night[7], P.moon[0], 0.35)], alpha: 0.38, y0: 166, c: 22, up: 6, floor: 0.2 },
+    },
+    // New York on the Fourth: a rose sodium glow over Manhattan
+    nyc: {
+      yard: GREEN_GOLD(0.35),
+      yardA: 0.28,
+      city: { cols: [mix(P.night[6], P.blossom[4], 0.45), mix(P.night[6], P.amber[4], 0.35)], alpha: 0.38, y0: 162, c: 22, up: 6, floor: 0.2 },
+    },
+    // Los Angeles: an amber smog glow over the basin, sparse so it reads as glow
+    la: {
+      yard: [mix(P.leaf[4], P.amber[4], 0.5), mix(P.leaf[5], P.amber[5], 0.5)],
+      yardA: 0.28,
+      city: { cols: [mix(P.night[5], P.amber[3], 0.6), mix(P.night[6], P.amber[4], 0.6)], alpha: 0.35, y0: 164, c: 22, up: 7, floor: 0, gain: 0.9 },
+    },
     // San Diego at dusk: rose-lilac haze (the bay gets its own sea mist)
-    sandiego: { yard: [mix(P.leaf[5], P.blossom[5], 0.42), mix(P.leaf[6], P.blossom[6], 0.42)], yardA: 0.30 },
-    // Washington in August: the most humid night, a fuller green-gold haze
-    dc: { yard: [mix(P.leaf[5], P.amber[4], 0.38), mix(P.leaf[6], P.amber[5], 0.38)], yardA: 0.38, yardGain: 0.95, city: [mix(P.night[6], P.leaf[5], 0.25), mix(P.night[7], P.amber[3], 0.25)], cityA: 0.46, cityFloor: 0.4 },
+    sandiego: { yard: [mix(P.leaf[5], P.blossom[5], 0.42), mix(P.leaf[6], P.blossom[6], 0.42)], yardA: 0.28 },
+    // Washington in August: the most humid night, a green-gold haze over the Mall
+    dc: {
+      yard: GREEN_GOLD(0.38),
+      yardA: 0.3,
+      yardGain: 0.85,
+      city: { cols: [mix(P.night[6], P.leaf[5], 0.5), mix(P.night[6], P.gold[3], 0.4)], alpha: 0.42, y0: 168, c: 22, up: 6, floor: 0.35 },
+    },
     // home to Boston under a pink-violet late dusk: end-of-summer calm
-    home: { yard: [mix(P.leaf[5], P.blossom[5], 0.4), mix(P.leaf[6], P.blossom[6], 0.4)], yardA: 0.32, city: [mix(P.violet[5], P.blossom[4], 0.5), mix(P.violet[6], P.blossom[5], 0.5)], cityA: 0.44 },
+    home: {
+      yard: [mix(P.leaf[5], P.blossom[5], 0.4), mix(P.leaf[6], P.blossom[6], 0.4)],
+      yardA: 0.3,
+      city: { cols: [mix(P.violet[5], P.blossom[4], 0.5), mix(P.violet[6], P.blossom[5], 0.5)], alpha: 0.42, y0: 164, c: 22, up: 6 },
+    },
   };
 
   /** sea mist on the bay: long thin strata lying on the calm water band */
   function seaMist() {
-    const cols = [mix(P.blossom[5], P.night[10], 0.45), mix(P.blossom[6], P.moon[3], 0.45)];
+    // the brightest mist, composited, stays at or below the horizon sky's value
+    const cols = [mix(P.blossom[5], P.night[10], 0.45), mix(P.blossom[5], P.moon[3], 0.3)];
     return [
       band({
         tw: 480,
@@ -1062,7 +1118,7 @@
             // (the bay runs from the far shore's lamps, y ~180, to the yard, y 200)
             { y: 14, th: 2.4, gain: 1.1 }, // the main streak lying on the open water
             { y: 7, th: 2.2, gain: 0.55, lo: 0.45, hi: 0.95 }, // a soft veil at the far shore's foot
-            { y: 21, th: 1.6, gain: 0.75, lo: 0.35, hi: 0.85 }, // a thin low streak near our shore
+            { y: 18, th: 1.6, gain: 0.4, lo: 0.5, hi: 0.9 }, // a broken low streak, clear of our shore
           ],
         }),
       }),
@@ -1082,38 +1138,63 @@
   function storyRecipe(ed) {
     const id = ed.id;
     const air = STORY_AIR[id];
-    const holes = [PORCH_HOLE, ...(STORY_HOLES[id] || [])];
+    const sd = idSeed(id);
+    const holes = [PORCH_HOLE, ...YARD_KEEP, ...(STORY_HOLES[id] || [])];
+    const city = air.city;
     const r = {
       // a thin thread from the hearth on a warm night (more, smaller puffs
       // so the thread stays continuous; no tiny highlight beads)
       chim: chim({ tone: DUSK.has(id) ? duskSmoke() : SMOKE.moon(), n: 28, rad0: 1.7, radK: 4.3, lvK: 1.25, hlK: 1.05, hlMin: 2.2, life: 15, rise: 50, curl: 1.4 }),
-      far: air.city
-        ? farBands({ cols: air.city, alpha: air.cityA, seed: 1011 + id.length, gain: air.cityGain || 0.85, floor: air.cityFloor === undefined ? 0.25 : air.cityFloor })
+      far: city
+        ? farBands({
+            cols: city.cols,
+            alpha: city.alpha,
+            seed: sd,
+            y0: city.y0,
+            c: city.c,
+            up: city.up,
+            gain: city.gain || 0.85,
+            floor: city.floor === undefined ? 0.25 : city.floor,
+          })
         : [],
-      // warm low summer haze lying over the back of the meadow (behind the
-      // family), warm-lit near the chapter's lights
+      // warm low summer haze lying on the meadow (behind the family), its
+      // core where the meadow meets the backdrop; near the chapter's lights it
+      // warms gently (soft light levels) instead of turning into an amber
+      // dot screen. Core 0.6: only the sparse darker tone reaches dark objects.
       ground: [
         groundBand({
           cols: air.yard,
           alpha: air.yardA,
-          c: 8,
+          c: 10,
           up: 3,
           down: 5,
           lo: 0.22,
           hi: 0.8,
           gain: air.yardGain || 0.82,
-          floor: 0.1,
-          seed: 1031 + id.length * 3,
+          floor: 0,
+          core: 0.6,
+          seed: sd + 3,
+          levels: [0, 0.12, 0.24, 0.36],
+          lb: 0.8,
           holes,
         }),
       ],
-      // the faintest wisps over the diorama lip, never across the cats' feet
-      front: [frontBand({ cols: air.yard, alpha: 0.2, n: 4, seed: 1041 + id.length, holes })],
+      // clear, dry summer nights: no wisps creeping over the lip (they could
+      // not be seen on the grass fringe anyway)
+      front: [],
     };
     if (id === 'sandiego') r.far = seaMist();
+    // firework smoke: dark (New York has no moon to light it) with a faint
+    // warm city-glow underside; it clears in the gaps of the show
+    const smoke = [mix(P.night[3], P.stone[3], 0.45), mix(P.night[5], P.stone[4], 0.4)];
+    const glow = smoke.map((c, k) => mix(c, P.amber[2], 0.22 + 0.06 * k));
     // the goal cheer's three little bursts leave a wisp of smoke over the roof
-    if (id === 'match') r.sky = burstSmoke({ cols: [mix(P.night[5], P.stone[5], 0.45), mix(P.night[7], P.stone[6], 0.45)], alpha: 0.36, life: 16 });
-    if (id === 'nyc') r.sky = burstSmoke({ cols: [mix(P.night[5], P.stone[5], 0.45), mix(P.night[7], P.stone[6], 0.45)], alpha: 0.48, life: 20 });
+    // (a crescent moon is up in Match Night: a touch lighter)
+    if (id === 'match') {
+      const ms = [mix(P.night[4], P.stone[4], 0.45), mix(P.night[6], P.stone[5], 0.4)];
+      r.sky = burstSmoke({ cols: ms, warm: ms.map((c, k) => mix(c, P.amber[2], 0.18 + 0.06 * k)), alpha: 0.4, life: 14, lifeSmall: 12 });
+    }
+    if (id === 'nyc') r.sky = burstSmoke({ cols: smoke, warm: glow, alpha: 0.5, life: 15, lifeSmall: 12 });
     return r;
   }
   for (const id of Object.keys(STORY_AIR)) RECIPES[id] = storyRecipe;
