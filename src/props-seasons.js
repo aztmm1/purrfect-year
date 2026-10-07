@@ -2068,15 +2068,16 @@
     const [bx, by] = heartPos(t);
     const f = T.flicker(T.step(t, 8), 77, 0.8);
     // a pink pool over the couple that reaches down to the picnic on the grass
-    Lt.add({ x: bx - 5, y: by + 13, r: 38, ry: 30, color: [1.0, 0.56, 0.5], i: 0.55 * (0.9 + 0.2 * f), bands: 5, halo: { x: bx, y: by + 5, r: 9, a: 0.16 } });
+    Lt.add({ x: bx - 10, y: by + 16, r: 38, ry: 30, color: [1.0, 0.56, 0.5], i: 0.55 * (0.9 + 0.2 * f), bands: 5, halo: { x: bx, y: by + 5, r: 9, a: 0.16 } });
   }
 
   // ---- LA: plaza string lights + a glass-tube patio heater -------------
   // two festoons of warm bulbs with paper lanterns, from a timber post at the
-  // left of the yard to hooks on the house's wall corner and porch post. They
-  // sag low across the dark wall band behind the stage (lowest bulbs ~y190 /
-  // ~y198), not over the skyline, and each bulb is a white-hot core with a
-  // soft bloom so it never reads as one of the city's orange window dots.
+  // left of the yard to two hooks on the house's wall corner (clear of the lit
+  // ground-left window). They sag low across the dark wall band behind the
+  // stage (lowest bulbs ~y190 / ~y198), not over the skyline, and each bulb
+  // is a white-hot core with a soft bloom so it never reads as one of the
+  // city's orange window dots.
   // Wires, sockets and the steady bulbs are baked once; a frame only blits
   // them and adds a few breathing bulbs and the lanterns.
   const PL_POST = { x: 52, base: 229, top: 180 };
@@ -2144,7 +2145,7 @@
     B.set(p.x - 10, p.base + 1, P.wood[5]);
     B.set(p.x - 11, p.base + 1, P.wood[3]);
     for (let x = p.x - 3; x <= p.x + 3; x++) if (HD.bayer(x, p.base + 1) < 0.7) B.set(x, p.base + 1, P.night[1]);
-    // the hooks on the house wall corner and the porch post
+    // the two hooks on the house's wall corner
     for (const s of PL_STRANDS) {
       const [hx, hy] = s.pts[1];
       B.set(hx, hy, P.stone[6]);
@@ -2199,8 +2200,8 @@
       });
     }
     // the festoon's glow pooled over the stage, so the family sits in it
-    Lt.add({ x: 98, y: 206, r: 32, ry: 22, color: HD.LIGHT.paperLantern, i: 0.15, bands: 4 });
-    Lt.add({ x: 142, y: 205, r: 30, ry: 22, color: HD.LIGHT.paperLantern, i: 0.14, bands: 4 });
+    Lt.add({ x: 98, y: 208, r: 34, ry: 30, color: HD.LIGHT.paperLantern, i: 0.15, bands: 4 });
+    Lt.add({ x: 142, y: 207, r: 32, ry: 30, color: HD.LIGHT.paperLantern, i: 0.14, bands: 4 });
   }
   const HT = SU.heater;
   function bakeHeater() {

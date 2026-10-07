@@ -140,6 +140,8 @@
     out: [[1, BY + 1, 'S'], [0, BY + 2, 'h'], [-1, BY + 2, 'h']],
     // raised beside the head (a toast)
     toast: [[1, BY, 'S'], [0, BY, 'S'], [-1, BY - 1, 'S'], [-2, BY - 2, 'h'], [-2, BY - 3, 'h']],
+    // straight out sideways at shoulder height (a cape spread wide)
+    wide: [[1, BY, 'S'], [0, BY, 'S'], [-1, BY, 'S'], [-2, BY, 'S'], [-3, BY, 'h']],
     up: ARM.up,
     up2: ARM.up2,
   };
@@ -168,9 +170,14 @@
       for (const x of [BX + 2, BX + 3, BX + 5, BX + 6]) if (get(G, x, BY + 5) === 'L') set(G, x, BY + 5, 'h');
     }
     if (sp.cape) {
-      for (let y = BY + 1; y <= BY + 5; y++) {
+      // falls from the shoulders and flares out to the ankles
+      for (let y = BY; y <= BY + 6; y++) {
         set(G, BX, y, 'K');
         set(G, BX + 8, y, 'K');
+      }
+      for (let y = BY + 4; y <= BY + 6; y++) {
+        set(G, BX - 1, y, 'K');
+        set(G, BX + 9, y, 'K');
       }
       set(G, BX + 1, BY, 'K');
       set(G, BX + 7, BY, 'K');
@@ -197,10 +204,15 @@
       set(G, tx, BY + 2, 'r');
     }
     if (sp.cape) {
+      // tall collar points either side of the jaw, red inside
+      set(G, HX - 1, HY + 4, 'K');
       set(G, HX - 1, HY + 5, 'K');
-      set(G, HX - 1, HY + 6, 'c');
+      set(G, HX - 1, HY + 6, 'K');
+      set(G, HX, HY + 6, 'c');
+      set(G, HX + 9, HY + 4, 'K');
       set(G, HX + 9, HY + 5, 'K');
-      set(G, HX + 9, HY + 6, 'c');
+      set(G, HX + 9, HY + 6, 'K');
+      set(G, HX + 8, HY + 6, 'c');
     }
   }
 
@@ -1530,6 +1542,7 @@
     if (arm === 'up') return [x + side * 7, b - 14];
     if (arm === 'up2') return [x + side * 8, b - 14];
     if (arm === 'chest') return [x + side, b - 5];
+    if (arm === 'wide') return [x + side * 7, b - 6];
     return [x + side * 3, b - 3];
   }
   /** where an item's light (or glowing head) is */
@@ -1545,33 +1558,59 @@
     g.line(x0, y0, hx, hy + 1, IC.stick);
     const e = g.em;
     const fr = Math.floor(T.step(t, 12) * 12);
+    // white-hot core with a gold cross, then short fizzing streaks
     e.px(hx, hy, SPARK[0]);
-    const n = big ? 8 : 6;
+    e.px(hx - 1, hy, SPARK[1]);
+    e.px(hx + 1, hy, SPARK[1]);
+    e.px(hx, hy - 1, SPARK[1]);
+    e.px(hx, hy + 1, SPARK[2]);
+    const n = big ? 9 : 7;
+    const rmax = big ? 5 : 4;
     for (let k = 0; k < n; k++) {
       const a = HD.hash(seed, fr, k, 1) * Math.PI * 2;
-      const r = 1 + HD.hash(seed, fr, k, 2) * (big ? 4 : 3);
-      const sx = R(hx + Math.cos(a) * r);
-      const sy = R(hy + Math.sin(a) * r * 0.9);
-      e.px(sx, sy, SPARK[Math.min(3, Math.floor(r))]);
+      const r = 2 + HD.hash(seed, fr, k, 2) * (rmax - 2);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a) * 0.9;
+      e.px(R(hx + ca * r), R(hy + sa * r), SPARK[r < 3 ? 1 : r < 4 ? 2 : 3]);
+      if (HD.hash(seed, fr, k, 3) < 0.5) e.px(R(hx + ca * (r - 1)), R(hy + sa * (r - 1)), SPARK[0]);
     }
-    if (fr % 2) e.px(hx + 1, hy, SPARK[1]);
-    else e.px(hx - 1, hy, SPARK[1]);
   }
   function drawCandleLantern(g, t, x, y, seed) {
-    // small metal carol lantern on a hook: cap, glowing glass, base
+    // metal carol lantern on a hook: ring, peaked cap, two glowing panes
+    // around a candle, base
     const [bx, by] = HD.festive.lanternPos(x, y, t, seed, { len: 2, amp: 0.14 });
     g.line(R(x), R(y), bx, by, IC.frame);
     const f = T.flicker(T.step(t, 10), seed, 1.2);
     const e = g.em;
     g.px(bx, by + 1, IC.frame);
     g.hline(bx - 1, bx + 1, by + 2, IC.frame);
-    g.px(bx - 1, by + 3, IC.frame);
-    g.px(bx + 1, by + 3, IC.frame);
-    g.px(bx - 1, by + 4, IC.frame);
-    g.px(bx + 1, by + 4, IC.frame);
-    e.px(bx, by + 3, P.amber[f > 0.5 ? 7 : 6]);
-    e.px(bx, by + 4, P.amber[f > 0.3 ? 8 : 7]);
-    g.hline(bx - 1, bx + 1, by + 5, IC.frame);
+    g.hline(bx - 2, bx + 2, by + 3, IC.frame);
+    for (let y = by + 4; y <= by + 6; y++) {
+      g.px(bx - 2, y, IC.frame);
+      g.px(bx + 2, y, IC.frame);
+      e.px(bx - 1, y, P.amber[y === by + 6 ? 5 : 6]);
+      e.px(bx + 1, y, P.amber[y === by + 6 ? 5 : 6]);
+      g.px(bx, y, IC.frame);
+    }
+    e.px(bx, by + 4, P.amber[f > 0.5 ? 8 : 7]);
+    e.px(bx, by + 5, P.amber[f > 0.25 ? 8 : 7]);
+    g.hline(bx - 2, bx + 2, by + 7, IC.frame);
+  }
+  /** a little camp lantern standing on the grass (x, base = its foot) */
+  function drawCampLantern(g, t, x, base, seed) {
+    const f = T.flicker(T.step(t, 10), seed, 0.8);
+    const e = g.em;
+    g.px(x, base - 7, IC.frame);
+    g.hline(x - 1, x + 1, base - 6, IC.frame);
+    for (let y = base - 5; y <= base - 2; y++) {
+      g.px(x - 2, y, IC.frame);
+      g.px(x + 2, y, IC.frame);
+      e.hline(x - 1, x + 1, y, P.amber[y === base - 2 ? 6 : 7]);
+    }
+    e.px(x, base - 4, P.amber[f > 0.4 ? 8 : 7]);
+    e.px(x, base - 3, P.amber[8]);
+    g.hline(x - 2, x + 2, base - 1, IC.frame);
+    g.hline(x - 1, x + 1, base, '#16141a');
   }
   function drawItem(g, t, c, it) {
     const s = it.side;
@@ -1671,14 +1710,16 @@
       g.px(c.x + 8, y, c.sp.scarfC);
       g.px(c.x + 8, y + 1, c.sp.scarfC2);
     } else if (k === 'wings') {
-      // the vampire opens the cape: dark outside, red lining inside
+      // the vampire spreads the cape wide: red lining between arm and hem,
+      // dark edges, a scalloped bat-wing hem
       for (const sd of [-1, 1]) {
-        for (let y = c.b - 12; y <= c.b - 2; y++) {
-          const reach = 7 - Math.floor((y - (c.b - 12)) / 4);
-          for (let d = 5; d <= reach; d++) g.px(c.x + sd * d, y, d === reach || y === c.b - 12 ? c.sp.capeC : c.sp.hatC2);
+        for (let y = c.b - 5; y <= c.b - 1; y++) {
+          const reach = 8 - ((y - (c.b - 5)) >> 1);
+          for (let d = 5; d <= reach; d++) g.px(c.x + sd * d, y, d === reach ? c.sp.capeC : c.sp.hatC2);
         }
-        // scalloped hem
-        g.px(c.x + sd * 6, c.b - 1, c.sp.capeC);
+        g.px(c.x + sd * 8, c.b - 6, c.sp.capeC);
+        g.px(c.x + sd * 7, c.b - 2, c.sp.capeC);
+        g.px(c.x + sd * 5, c.b, c.sp.capeC);
       }
     }
   }
@@ -1704,10 +1745,9 @@
         o.br = w.br;
         o.gust = w.gust;
       }
-      for (const it of c.items) if (it.k === 'wings') drawItem(g, t, c, it);
       drawAdult(g, t, c.sp, c.x, c.b, c.seed, o);
       if (c.sp.sequins) sequins(g, t, c);
-      for (const it of c.items) if (it.k !== 'wings') drawItem(g, t, c, it);
+      for (const it of c.items) drawItem(g, t, c, it);
     }
     if (S.cfg.after) S.cfg.after(g, t, S);
   }
@@ -1721,19 +1761,19 @@
         const [hx, hy] = itemHead(c, it);
         if (it.k === 'sparkler') {
           const f = T.flicker(T.step(t, 12), seed, 2);
-          L.add({ x: hx, y: hy, r: it.big ? 24 : 20, color: SPK_L, i: (it.big ? 0.42 : 0.32) * (0.8 + 0.35 * f) });
+          L.add({ x: hx, y: hy, r: it.big ? 28 : 24, color: SPK_L, i: (it.big ? 0.5 : 0.4) * (0.8 + 0.35 * f) });
         } else if (it.k === 'redLantern' || it.k === 'paperLantern') {
-          HD.festive.lanternLight(L, hx, hy, t, seed, it.k === 'redLantern' ? 'red' : 'paper', { size: 'small', len: 1, amp: 0.3, r: 22, i: 0.3, halo: false });
+          HD.festive.lanternLight(L, hx, hy, t, seed, it.k === 'redLantern' ? 'red' : 'paper', { size: 'small', len: 1, amp: 0.3, r: 28, i: 0.42, halo: false });
         } else if (it.k === 'pole') {
           const [bx, by] = HD.festive.lanternPos(hx, hy + 1, t, seed, { len: 2, amp: 0.14 });
           const f = T.flicker(T.step(t, 10), seed, 1.2);
-          L.add({ x: bx, y: by + 4, r: 30, color: HD.LIGHT.candle, i: 0.42 * (0.85 + 0.25 * f), halo: { r: 7, a: 0.12 } });
+          L.add({ x: bx, y: by + 5, r: 38, color: HD.LIGHT.candle, i: 0.6 * (0.85 + 0.25 * f), halo: { r: 8, a: 0.14 } });
         } else if (it.k === 'diya') {
           const [px, py] = pawOf(c, it.side, it.arm);
-          HD.festive.flameLight(L, px + it.side * 2, py - 2, t, seed, 18, 0.3);
+          HD.festive.flameLight(L, px + it.side * 2, py - 2, t, seed, 22, 0.4);
         } else if (it.k === 'pail') {
           const f = T.flicker(T.step(t, 10), seed, 1.2);
-          L.add({ x: hx, y: hy + 2, r: 18, color: HD.LIGHT.pumpkin, i: 0.3 * (0.8 + 0.3 * f) });
+          L.add({ x: hx, y: hy + 2, r: 22, color: HD.LIGHT.pumpkin, i: 0.38 * (0.8 + 0.3 * f) });
         }
       }
     if (S.cfg.fill) S.cfg.fill(t, L, S);
@@ -1742,6 +1782,8 @@
   // ---- the editions -----------------------------------------------------
   const inWin = (s, a, b) => (s >= a && s < b ? (s - a) / (b - a) : -1);
   const N = nite;
+  // her clothes are painted a touch brighter: she is the one the eye should find
+  const NV = (h) => nite(h, 0.2);
   const NIGHT = {
     // Lunar New Year: red tops with gold trim, small red lanterns and sparklers
     lunar: {
@@ -1749,7 +1791,7 @@
       seed: 0,
       cast: ['wife', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: N('#d41e2a'), collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#24182a') },
+        wife: { shirt: NV('#d41e2a'), collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#24182a') },
         ginger: { shirt: N('#c8202c'), shirtAlt: N('#f0b830'), pattern: 'floral', neck: 'tee', pants: N('#2a2228') },
         cream: { shirt: N('#b0162c'), collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#1e1a22') },
         tabby: { shirt: N('#e23428'), shirtAlt: N('#f4c440'), pattern: 'hem', neck: 'tee', pants: N('#2a2a34') },
@@ -1769,7 +1811,7 @@
       seed: 3,
       cast: ['cream', 'ginger', 'wife', 'tabby'],
       wear: {
-        wife: { shirt: N('#c4a0ea'), neck: 'tee', pants: N('#efe6d2') },
+        wife: { shirt: NV('#c4a0ea'), neck: 'tee', pants: NV('#efe6d2') },
         ginger: { shirt: N('#9cdcb8'), neck: 'tee', pants: N('#f2ecdc'), hat: 'bunny', hatC: N('#f6f2ee'), hatC2: N('#f4a8c0'), hatBand: N('#f4a8c0') },
         cream: { shirt: N('#f6b49c'), neck: 'tee', pants: N('#f4f0e6') },
         tabby: { shirt: N('#9cc4f0'), neck: 'tee', pants: N('#ece6d6') },
@@ -1798,7 +1840,7 @@
       seed: 6,
       cast: ['ginger', 'cream', 'wife', 'tabby'],
       wear: {
-        wife: { shirt: N('#f6f2ea'), pants: N('#f6f2ea'), dress: true, neck: 'tee', hat: 'crown', pom: N('#f4a0c0'), flower2: N('#f8e070'), leaf: N('#5aa84a') },
+        wife: { shirt: NV('#f6f2ea'), shirtAlt: NV('#e86a8a'), pattern: 'hem', pants: NV('#f6f2ea'), dress: true, neck: 'tee', hat: 'crown', pom: NV('#f4a0c0'), flower2: NV('#f8e070'), leaf: NV('#5aa84a') },
         ginger: { shirt: N('#f2d24a'), neck: 'tee', pants: N('#9ab4d8'), hat: 'crown', pom: N('#f8f4f0'), flower2: N('#c8a0f0'), leaf: N('#5aa84a') },
         cream: { shirt: N('#8ec0f0'), pants: N('#8ec0f0'), dress: true, neck: 'tee', hat: 'crown', pom: N('#f8e070'), flower2: N('#f48aa8'), leaf: N('#5aa84a') },
         tabby: { shirt: N('#f08a70'), neck: 'tee', pants: N('#f2ecdc'), hat: 'crown', pom: N('#ffffff'), flower2: N('#f8e070'), leaf: N('#5aa84a') },
@@ -1820,7 +1862,7 @@
       seed: 9,
       cast: ['tabby', 'ginger', 'wife', 'cream'],
       wear: {
-        wife: { shirt: N('#ece0c4'), shirtAlt: N('#cdbf9e'), pattern: 'cable', neck: 'tee', pants: N('#2c3650'), scarf: 'R', scarfC: N('#c0582a'), scarfC2: N('#e8923e') },
+        wife: { shirt: NV('#ece0c4'), shirtAlt: NV('#cdbf9e'), pattern: 'cable', neck: 'tee', pants: NV('#2c3650'), scarf: 'R', scarfC: NV('#c0582a'), scarfC2: NV('#e8923e') },
         ginger: { shirt: N('#3a7a50'), shirtAlt: N('#ece0c4'), pattern: 'band', neck: 'tee', pants: N('#3a3036'), scarf: 'L', scarfC: N('#efe6d2'), scarfC2: N('#c8bca4') },
         cream: { shirt: N('#8e2a3a'), shirtAlt: N('#b84a58'), pattern: 'cable', neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#e0a83a'), scarfC2: N('#b88028') },
         tabby: { shirt: N('#d8a033'), shirtAlt: N('#8e2a3a'), pattern: 'band', neck: 'tee', pants: N('#4a3a30'), scarf: 'L', scarfC: N('#8e2a3a'), scarfC2: N('#b84a58') },
@@ -1842,7 +1884,7 @@
       seed: 12,
       cast: ['cream', 'ginger', 'wife', 'tabby'],
       wear: {
-        wife: { shirt: N('#6a3a9a'), neck: 'vneck', pants: N('#1c1622'), dress: true, hat: 'witch', hatC: N('#3a2a58'), hatBand: N('#e88a24') },
+        wife: { shirt: NV('#6a3a9a'), neck: 'vneck', pants: NV('#1c1622'), dress: true, hat: 'witch', hatC: NV('#3a2a58'), hatBand: NV('#e88a24') },
         ginger: { shirt: N('#e8e6f0'), collar: N('#b01828'), neck: 'polo', pants: N('#1a1820'), cape: true, capeC: '#15111c', hatC2: N('#b01828') },
         cream: { round: true, shirt: N('#ec781c'), shirtAlt: '#2a1406', pattern: 'jack', neck: 'none', pants: N('#ec781c'), hat: 'stem', leaf: N('#4a8a3a') },
         tabby: { shirt: '#1e1c24', shirtAlt: N('#ece8de'), pattern: 'bones', neck: 'none', pants: '#1e1c24' },
@@ -1854,8 +1896,8 @@
         if (!on) return;
         if (c.who === 'ginger') {
           // the vampire swirls the cape open: "boo!"
-          c.al = 'up';
-          c.ar = 'up';
+          c.al = 'wide';
+          c.ar = 'wide';
           c.items.push({ k: 'wings', side: 0, arm: '' });
           c.o.mouth = 'o';
           c.o.eyes = undefined;
@@ -1874,7 +1916,7 @@
       seed: 15,
       cast: ['wife', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: N('#d0207a'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#f0b838') },
+        wife: { shirt: NV('#d0207a'), shirtAlt: NV('#f4c440'), pattern: 'hem', collar: NV('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: NV('#f0b838') },
         ginger: { shirt: N('#1a9a5c'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', pants: N('#ece2c8') },
         cream: { shirt: N('#2a50d8'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#2a50d8'), dress: true },
         tabby: { shirt: N('#f08a1a'), shirtAlt: N('#c81a6a'), pattern: 'hem', collar: N('#c81a6a'), neck: 'mandarin', pants: N('#ece2c8') },
@@ -1894,10 +1936,10 @@
       seed: 18,
       cast: ['wife', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: N('#c08850'), shirtAlt: N('#7a5432'), coat: true, neck: 'tee', pants: N('#2a2228'), hat: 'beanie', hatC: N('#ece4d4'), hatC2: N('#c8bca8'), pom: N('#ffffff'), scarf: 'R', scarfC: N('#c82a30'), scarfC2: N('#f2ece4') },
-        ginger: { shirt: N('#2c3c70'), shirtAlt: N('#c8a040'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#c82a30'), hatC2: N('#f2ece4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#c8bca8') },
+        wife: { shirt: NV('#c88e52'), shirtAlt: NV('#7a5432'), coat: true, neck: 'tee', pants: NV('#2a2228'), hat: 'beanie', hatC: NV('#d42a32'), hatC2: NV('#f4eee6'), pom: NV('#ffffff'), scarf: 'R', scarfC: NV('#f4eee6'), scarfC2: NV('#d42a32') },
+        ginger: { shirt: N('#2c3c70'), shirtAlt: N('#c8a040'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#ece4d4'), hatC2: N('#c8bca8'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#c82a30'), scarfC2: N('#f2ece4') },
         cream: { shirt: N('#c02a30'), shirtAlt: N('#6a1218'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#2a7a44'), hatC2: N('#f2ece4'), pom: N('#ffffff'), scarf: 'R', scarfC: N('#2a7a44'), scarfC2: N('#f2ece4') },
-        tabby: { shirt: N('#2a6a40'), shirtAlt: N('#14361e'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#c82a30'), hatC2: N('#ece4d4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#c82a30') },
+        tabby: { shirt: N('#2a6a40'), shirtAlt: N('#14361e'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#3a5ab0'), hatC2: N('#ece4d4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#3a5ab0') },
       },
       big: (t, s) => inWin(s, 160, 166),
       act(c, t, s, big) {
@@ -1923,17 +1965,17 @@
       seed: 21,
       cast: ['ginger', 'cream', 'wife', 'tabby'],
       wear: {
-        wife: { shirt: N('#e8c050'), pants: N('#e8c050'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f04a9a'), hatC2: N('#f4c440'), pom: N('#ffffff') },
+        wife: { shirt: NV('#e8c050'), pants: NV('#e8c050'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: NV('#f04a9a'), hatC2: NV('#f4c440'), pom: NV('#ffffff') },
         ginger: { shirt: N('#7a3ab0'), neck: 'tee', pants: N('#22222a'), hat: 'party', hatC: N('#2ab0b0'), hatC2: N('#e8e8f0'), pom: N('#f4c440') },
-        cream: { shirt: N('#c8ccd8'), pants: N('#c8ccd8'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f4c440'), hatC2: N('#c81a6a'), pom: N('#ffffff') },
+        cream: { shirt: N('#1f8a6a'), pants: N('#1f8a6a'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f4c440'), hatC2: N('#c81a6a'), pom: N('#ffffff') },
         tabby: { shirt: N('#2a3a8a'), collar: N('#f2ece4'), neck: 'shirt', shirtAlt: N('#f2ece4'), pants: N('#1e1e28'), hat: 'party', hatC: N('#d82a30'), hatC2: N('#f2ece4'), pom: N('#f4c440') },
       },
       // the fireworks salvo bursts (fire-seasons: launched at LOOP/4 and 3*LOOP/4)
       big: (t, s) => inWin(s, HD.LOOP * 0.75 + 1.2, HD.LOOP * 0.75 + 6.5),
       act(c, t, s, big) {
         const look = inWin(s, HD.LOOP * 0.25 + 1.2, HD.LOOP * 0.25 + 5) >= 0;
-        const item = c.who === 'ginger' ? 'sparkler' : 'flute';
-        const side = c.who === 'ginger' ? -1 : c.face;
+        const item = c.who === 'wife' ? 'sparkler' : 'flute';
+        const side = c.who === 'wife' ? -1 : c.face;
         if (big >= 0) {
           give(c, side, 'up', item, { big: true, glint: (Math.floor(T.step(t, 6) * 6) + c.i) % 3 === 0 });
           cheerUp(c, t, c.i);
@@ -1951,7 +1993,7 @@
       seed: 24,
       cast: ['wife', 'ginger', 'cream', 'tabby'],
       wear: {
-        wife: { shirt: N('#f2eee6'), neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#d0202a'), scarfC2: N('#f4c440') },
+        wife: { shirt: NV('#f2eee6'), neck: 'tee', pants: NV('#2a2a34'), scarf: 'R', scarfC: NV('#d0202a'), scarfC2: NV('#f4c440') },
         ginger: { shirt: N('#2a5a3a'), neck: 'tee', pants: N('#2c3448'), scarf: 'L', scarfC: N('#8cc8f0'), scarfC2: N('#f4f4f4') },
         cream: { shirt: N('#2a3460'), neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#2a8a4a'), scarfC2: N('#f4f4f4') },
         tabby: { shirt: N('#7a2a3a'), neck: 'tee', pants: N('#22222a'), scarf: 'L', scarfC: N('#26346a'), scarfC2: N('#f08a2a') },
@@ -1959,6 +2001,14 @@
       big: (t) => {
         const gl = HD.summer.goal(t);
         return gl >= 0 && gl < 0.6 ? gl / 0.6 : -1;
+      },
+      // a little camp lantern on the grass lights the group
+      after(g, t) {
+        drawCampLantern(g, t, 274, 228, 77);
+      },
+      fill(t, L) {
+        const f = T.flicker(T.step(t, 10), 77, 0.8);
+        L.add({ x: 274, y: 224, r: 38, color: HD.LIGHT.lantern, i: 0.5 * (0.9 + 0.15 * f), halo: { r: 8, a: 0.12 } });
       },
       act(c, t, s, big) {
         if (big < 0) return;
