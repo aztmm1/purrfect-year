@@ -1,6 +1,6 @@
 /*
- * building-apt2 (Purrfect Year v2): apartment 2, the block where he lives
- * alone from September 2026 (Harvest at golden hour, Halloween on a cold
+ * building-apt2 (Purrfect Year v2): apartment 2, the second Boston building,
+ * used from September 2026 (Harvest at golden hour, Halloween on a cold
  * rainy night).
  *
  * A long, low eight-storey block on the street stage (x 138..338, base y 206):
@@ -8,7 +8,7 @@
  *   - a narrow slate-blue stair strip
  *   - the rust terra-cotta bay: horizontal lap panels with the windows stacked
  *     in narrow charcoal bands; his ONE window (place.catWindow) is a feature
- *     window in a dark box surround, the warmest window, him alone in it
+ *     window in a dark box surround, the warmest window, the series cat in it
  *   - a charcoal-brick bay
  *   - the charcoal gateway corner, the highest point: a thin orange edge, a
  *     white frame of big windows, a plain blade fin and a glowing glass lobby
@@ -361,7 +361,7 @@
     for (const w of WINS) {
       if (w.kind === 'film') continue;
       const r = h2(w.i, 9, seed);
-      // keep the windows round his dark, so his stays alone
+      // keep the windows round his dark, so his stands out
       const near = Math.abs(w.x + 2 - 212) < 14 && Math.abs(w.y - CW.y) < 24;
       if (near) continue;
       if (w.kind === 'stair') st[w.i] = r < 0.3 ? 1 : 0;
@@ -857,7 +857,7 @@
     const e = g.em;
     const { x, y, w, h } = CW;
     e.sprite(a.room, ROOM.x, ROOM.y);
-    // the series cat, alone at his window
+    // the series cat at his window
     if (ed.cast.window !== 'empty') HD.mascot.draw(g, t, PL.mascot.x, PL.mascot.y);
     // rain on the glass: drops cling, then slide down catching the room light
     const ww = ed.weather;

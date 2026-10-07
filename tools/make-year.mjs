@@ -61,9 +61,9 @@ const PER_DEFAULT = 225; // 7.5 s per entry: 16 entries = 3600 frames = 2:00.000
 //   trick-or-treat kittens reach the apt1 lobby door at about 118 and wait
 //   there 6 s; lightning at 64.8 and 170.4 at the Halloweens.
 // Crops (src/places.js anchors):
-//   apt1, together: the window (x 203-239) with the building around it.
-//   apt1 holidays, he alone in the window, she with her friends in the
-//     plaza (x 330-432): the two span 230 px, more than 216, so x 200..416
+//   apt1, two cats: the window (x 203-239) with the building around it.
+//   apt1 holidays, the black cat in the window and a group of friends in
+//     the plaza (x 330-432): the two span 230 px, more than 216, so x 200..416
 //     keeps the whole window, the fire pit (x 400) and most of the group.
 //   match: his balcony (x 198-244) and the plaza. nyc: the bench (x 244-274)
 //   with the hotel tower. Trips: stages.family. herndon: the party (x 80-150)
@@ -71,11 +71,11 @@ const PER_DEFAULT = 225; // 7.5 s per entry: 16 entries = 3600 frames = 2:00.000
 //   (x 205-220) over the walkers' path.
 // ---------------------------------------------------------------------------
 const TABLE = {
-  // the two of them in the window; a busy stretch of the Diwali fireworks
+  // two cats in the window; a busy stretch of the Diwali fireworks
   diwali: { start: 147.5, x: 120 },
   // the trick-or-treat kittens walk up to the lobby door and wait there
   halloween25: { start: 115, x: 120 },
-  // she and her friends round the fire pit, warm mugs; he at the window
+  // friends round the fire pit with warm mugs; the black cat at the window
   thanksgiving: { start: 60, x: 200 },
   christmas: { start: 25, x: 200 },
   // the logo firework rises at 118, bursts at about 119.5 and holds to 123.5
@@ -95,7 +95,7 @@ const TABLE = {
   dc: { start: 96, x: 8, side: 'right' },
   // the kid walks out of the entrance (20-24)
   home: { start: 19, x: 120 },
-  // she and her friends stroll past under his window, left to right
+  // a group of friends strolls past under his window, left to right
   harvest: { start: 35, x: 96, side: 'right' },
   // the costumed walkers pass his window right to left, then the lightning
   // (170.4)

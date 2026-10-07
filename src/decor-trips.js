@@ -3,7 +3,7 @@
  *
  *   soho     a slatted bench on a cast-iron frame (place.bench), shopping
  *            bags beside it, a heart-shaped paper lantern hung from the
- *            hotel canopy over the couple, and pleated red-white-blue fans
+ *            hotel canopy over the bench, and pleated red-white-blue fans
  *            on the lofts' fire escapes and sills (tags shopping-bags,
  *            heart-lantern, bunting-usa)
  *   bhills   a wooden valet podium and a brass bell cart with luggage by the
@@ -1254,7 +1254,7 @@
   }
 
   // the heart lantern hangs on a short cord from the hotel canopy's end, just
-  // above the couple; a 6 fps cadence swings it by a px in the breeze
+  // above the bench; a 6 fps cadence swings it by a px in the breeze
   const HEART_ROWS = ['.aa.aa.', 'abbabba', 'abccbba', 'abbbbba', '.abbba.', '..aba..', '...a...'];
   const HEART_COL = {
     a: [P.red[4], P.red[5]],
@@ -1296,7 +1296,7 @@
   function heartLight(t, L, pl) {
     const [bx, by] = heartPos(t, pl);
     const f = T.flicker(T.step(t + Q, 8), 77, 0.8);
-    // a pink-warm pool that falls on the couple, the bench and the bags
+    // a pink-warm pool that falls on the cats, the bench and the bags
     L.add({ x: bx + 6, y: by + 20, r: 40, ry: 22, color: [1.0, 0.56, 0.5], i: 0.62 * (0.88 + 0.22 * f), bands: 5, halo: { x: bx, y: by + 5, r: 9, a: 0.18 } });
   }
 

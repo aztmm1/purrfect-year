@@ -12,14 +12,14 @@
  *   window 'together'   HD.drawPartner(g, t, x, base): his partner beside the
  *                       series cat in the cat window (the building calls it
  *                       before its balcony rail or window frame)
- *   out 'friends'       she and three friends (ginger, cream, grey tabby)
+ *   out 'friends'       four friends (ginger, cream, grey tabby)
  *                       celebrating in stages.group, an outfit and activity
  *                       per entry
  *   out 'passby'        they walk past along the sidewalk (in, across, out)
  *   party 'match'       him on his balcony in a red jersey; HD.drawBalcony
  *                       lets the building draw him before its rail
- *   party 'bench'       the couple on the bench, a heart floats up
- *   party 'trip'        him, the kid, the guest couple
+ *   party 'bench'       two cats on the bench, a heart floats up
+ *   party 'trip'        him, the kid and two guests
  *   party 'birthday'    the party round the table with the host
  *   kid               she comes out of the entrance and goes back in
  *   tag trick-or-treat  tiny costumed kittens call at the lobby
@@ -665,7 +665,7 @@
     // ---- his partner ----
     const herFur = { fur: c('#2a2026'), hair: 'long', hairC: c('#221c2e'), sheenC: c('#5c5680'), light: c('#3a2c34'), eye: '#c8d870', nose: c('#a05868'), inner: c('#b06878'), tongue: c('#e07080'), mouthC: c('#4a2630'), happyEm: true, shoes: c('#1e1c24') };
     const partner = Object.assign({ key: pre + 'partner', mouth: 'smile', shirt: V('#fff6e8'), neck: 'tee', pants: V('#2a2a34') }, herFur);
-    // ---- the guest couple and the host ----
+    // ---- the two guests and the host ----
     const guestA = {
       key: pre + 'guestA',
       fur: c('#32242a'),
@@ -742,7 +742,7 @@
       hatC2: c('#3a8ae0', 0.2),
       pom: c('#ffffff'),
     };
-    // ---- her friends: original generic cats ----
+    // ---- the friends: original generic cats ----
     const friend = {
       ginger: { fur: c('#d4782f'), dark: c('#94451a'), light: c('#f6d29c'), muzzle: 'f', tabby: true, inner: c('#f0a0a0'), eye: '#e8d050', nose: c('#e88a94'), tongue: c('#e07080'), mouthC: '#3a160c', happyEm: true },
       cream: { fur: c('#ece2d0'), light: c('#fffaf0'), muzzle: 'f', inner: c('#f4a8b4'), eye: '#8cc8f4', nose: c('#f08c9c'), tongue: c('#e07080'), mouthC: '#5a3438', lid: '#3a2a2a', happyEm: true },
@@ -1001,7 +1001,7 @@
   // past her shoulder and a long plume tail. x = left edge of her 11-px
   // column (head at x+2..x+8), base = the row under her (as the series
   // cat's: 12 px tall).
-  // She leans her head on his now and then (he sits to her right).
+  // Now and then she tilts her head to the right (he sits on that side).
   // =====================================================================
   // the series cat's head and body, with long straight hair from a side
   // parting swept over her outer shoulder and falling to the sill, where it
@@ -1073,7 +1073,7 @@
       g.px(x - 2 + f, top + 2, WP_C.K);
       g.px(x - 1 + f, top + 2, WP_C.K);
     }
-    // eyes: her own green-gold, now and then a glance at him; closed while she rests on him
+    // eyes: her own green-gold, now and then a glance at him; closed while she rests
     const id = idle(t, 21);
     const hd = [0, 2, 5][k];
     const hy = k === 2 ? 1 : 0;
@@ -1084,7 +1084,7 @@
   };
 
   // =====================================================================
-  // HER FRIENDS: the plaza group (cast.out 'friends')
+  // THE PLAZA GROUP (cast.out 'friends')
   // =====================================================================
   /** chatting: look at the neighbours, talk in short bursts, laugh now and then */
   function social(t, seed, face) {
@@ -1566,7 +1566,7 @@
   }
 
   // =====================================================================
-  // THE PASS-BY: she and her friends walk past (cast.out 'passby')
+  // THE PASS-BY: a group of friends walks past (cast.out 'passby')
   // =====================================================================
   const PASS = {
     harvest: {
@@ -1644,7 +1644,7 @@
       if (c.who === 'partner') {
         o.br = R(w.br - c.dir);
         o.gust = w.gust;
-        // passing under his window, she looks up at it for a moment
+        // passing under his window, one walker looks up at it for a moment
         if (win && S.dir > 0 && Math.abs(c.x - (win.x + win.w / 2)) < 9) {
           o.look = 0;
           o.hy = -1;
@@ -1887,7 +1887,7 @@
     const st = (pl.stages && pl.stages.door) || { base: 222 };
     const down = [ex + 2, st.base];
     if (id === 'match') {
-      // out to the plaza, by the lamp at the corner of her aunt's group
+      // out to the plaza, by the lamp at the corner of the plaza group
       return [door, down, [pl.stages.group.x0 + 14, st.base + 1]];
     }
     return [door, down, [R(pl.catWindow.x + pl.catWindow.w + 2), st.base + 1]];
@@ -2004,7 +2004,7 @@
           look = 1;
         } else if (a > 6 && a < 6.8) bob = Math.floor(ts * 8) % 2 ? -1 : 0;
       } else {
-        // home: waving up at the two of them in the window, reaching for fireflies
+        // home: waving up at the window, reaching for fireflies
         const a = homeWaveAge(t);
         if (a < 2) {
           arms = waveArm(t);
@@ -2019,7 +2019,7 @@
   }
 
   // =====================================================================
-  // THE BENCH: the anniversary (cast.party 'bench')
+  // THE BENCH: two cats on a bench (cast.party 'bench')
   // =====================================================================
   const NYC_LEANS = [[57, 70], [177, 190], [118, 126], [222, 228]];
   function benchLean(t) {
@@ -2091,7 +2091,7 @@
   }
 
   // =====================================================================
-  // TRIPS: him, the kid, the guest couple (cast.party 'trip')
+  // TRIPS: him, the kid and two guests (cast.party 'trip')
   // =====================================================================
   function tripSpots() {
     const pl = HD.place();
@@ -2100,7 +2100,7 @@
     if (HD.edition.cast.shoulderRide) return { guestB: st.x0 + R(w * 0.2), guestA: st.x0 + R(w * 0.38), you: st.x0 + R(w * 0.7), base: st.base };
     return { guestB: st.x0 + R(w * 0.12), guestA: st.x0 + R(w * 0.33), you: st.x0 + R(w * 0.56), kitHome: st.x0 + R(w * 0.75), kitAway: st.x0 + R(w * 0.45), base: st.base };
   }
-  /** the kid trots over to her grown-up now and then and back to him */
+  /** the kid trots over to a grown-up now and then and back to him */
   function tripKit(t, P2) {
     const s = sec(t);
     const trips = [

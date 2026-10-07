@@ -1337,7 +1337,7 @@
         e.vline(cx + 1, y0 + 1, y0 + H - 1, r.curtain2);
       }
       e.hline(x0, x0 + W - 1, y0, r.deep); // curtain rod
-      // alone at home: a small table on the left with a seasonal piece
+      // window props: a small table on the left with a seasonal piece
       if (cast.window === 'alone') sideTable(e, g, c, r, env);
       if (cast.window === 'together' && tag('pumpkins-balcony')) {
         // a small carved pumpkin by the lamp (its face flickers per frame)

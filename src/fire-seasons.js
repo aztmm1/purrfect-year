@@ -137,7 +137,7 @@
   //   pistil    chance a peony carries a filled pistil of a second colour
   //   willow    ramp of the willows
   //   gold      for a tricolour show: gold on about one shell in this many
-  //   triple    July 4th: after each anniversary heart, a red-white-blue
+  //   triple    July 4th: after each heart, a red-white-blue
   //             triple sweeps across the left sky ([zone, x, height 0..1, colour])
   //   salvo     New Year's Eve: a fan of four shells right after the logo
   //             firework (midnight) and again half a loop later
@@ -191,7 +191,7 @@
   const DEFAULT_CFG = { mix: { peony: 3, chrys: 2, ring: 1.5, willow: 1.2, crackle: 1.5 }, R: [12, 9], pistil: 0.25, willow: 'willow' };
   // the Match Night goal cheer: [launch offset in the goal window (s), type,
   // x, y, star radius, colour, opts]. Red and gold for the jersey, a white
-  // starburst between them; high over the plaza where her friends cheer
+  // starburst between them; high over the plaza where the friends cheer
   const GOAL = {
     apt1: [
       [0.3, 'peony', 356, 76, 15, 'gold', { nk: 0.9 }],
@@ -599,7 +599,7 @@
       }
       quietWins.push([ts - 3, ts + 8]);
     }
-    // the July 4th triple, launched as each anniversary heart finishes rising
+    // the July 4th triple, launched as each heart finishes rising
     if (cfg.triple) {
       const hw = windowsOf(HD.summer && HD.summer.heart);
       const tripleAt = hw ? hw.map((w) => w[1] + 0.4) : cfg.tripleFallback;

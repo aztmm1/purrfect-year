@@ -1,7 +1,7 @@
 /*
  * Summer Story timing shared by several modules (see SUMMER.md), so the cats
  * (family), the cake candles (props), the goal cheer (house/fire) and the
- * anniversary heart all agree on when things happen. Everything is a pure,
+ * heart all agree on when things happen. Everything is a pure,
  * loop-safe function of t.
  */
 (function () {
@@ -61,7 +61,7 @@
     goal(t) {
       return win(t, 150, 158);
     },
-    /** NYC anniversary: a little heart floats up between the two cats */
+    /** NYC: a little heart floats up between the two cats */
     heart(t) {
       return win(t, 60, 66) >= 0 ? win(t, 60, 66) : win(t, 180, 186);
     },

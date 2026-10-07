@@ -1,8 +1,8 @@
 {
  "editions": {
   "halloween25": {
-   "code": "574c07b074917a8d",
-   "ed": "b3437c346aa6",
+   "code": "93e3529999287236",
+   "ed": "74a376e690b8",
    "stems": {
     "mus-keys": -5.592,
     "mus-pad": -7.066,
@@ -39,11 +39,11 @@
    "musicLUFS": -19.03,
    "ambLUFS": -22.96,
    "unlimitedLimiterDb": 0,
-   "seconds": 224
+   "seconds": 96
   },
   "christmas": {
-   "code": "574c07b074917a8d",
-   "ed": "eb656e386bae",
+   "code": "93e3529999287236",
+   "ed": "0aa3025c5587",
    "stems": {
     "mus-keys": -5.708,
     "mus-pad": -6.814,
@@ -76,11 +76,11 @@
    "musicLUFS": -18.51,
    "ambLUFS": -29.26,
    "unlimitedLimiterDb": 0,
-   "seconds": 231
+   "seconds": 102
   },
   "thanksgiving": {
-   "code": "574c07b074917a8d",
-   "ed": "fd0b2544349c",
+   "code": "93e3529999287236",
+   "ed": "7c517d031dce",
    "stems": {
     "mus-keys": -5.378,
     "mus-pad": -6.867,
@@ -119,11 +119,11 @@
    "musicLUFS": -18.28,
    "ambLUFS": -28.37,
    "unlimitedLimiterDb": 0,
-   "seconds": 282
+   "seconds": 114
   },
   "diwali": {
-   "code": "574c07b074917a8d",
-   "ed": "f6bd82e55dcf",
+   "code": "93e3529999287236",
+   "ed": "8f7bb1f0efb4",
    "stems": {
     "mus-kick": -9.011,
     "mus-hats": 0.493,
@@ -170,7 +170,7 @@
    "musicLUFS": -17.87,
    "ambLUFS": -29.54,
    "unlimitedLimiterDb": 0,
-   "seconds": 345
+   "seconds": 147
   },
   "nyc": {
    "code": "574c07b074917a8d",

@@ -790,7 +790,7 @@
   // in a few fixed spots (only the pools' strength changes).
   //
   // Per entry (FF_SETS), on the place's anchors:
-  //   midsummer  the apt1 plaza round the fire pit, her friends in the middle
+  //   midsummer  the apt1 plaza round the fire pit, the friends in the middle
   //   match      the apt1 plaza; at the goal the plaza dims, a cheer of
   //              fireflies lifts out of the tree crowns and flashes ripple
   //              out from the friends across the plaza
