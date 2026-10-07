@@ -54,8 +54,8 @@ const PER_DEFAULT = 225; // 7.5 s per entry: 16 entries = 3600 frames = 2:00.000
 // (9:16 at full height) crop that holds the cat window and the people, for
 // stills and thumbnails (--probe checks what each crop holds).
 // Story beats (src/summer.js, src/family.js; run --probe for the rest):
-//   the niece walks in from the entrance at 20-24 and 140-144, the gift
-//   40-46, dad blows 98-100 and the candles are out 100-112, the goal
+//   the kid walks in from the entrance at 20-24 and 140-144, the gift
+//   40-46, host blows 98-100 and the candles are out 100-112, the goal
 //   150-158, the heart 60-66 and 180-186; the walkers stroll past the apt2
 //   window rightwards from 18 and leftwards from 138 (about 11 px/s); the
 //   trick-or-treat kittens reach the apt1 lobby door at about 118 and wait
@@ -91,9 +91,9 @@ const TABLE = {
   nyc: { start: 181.3, x: 151 },
   la: { start: 30, x: 122 },
   sandiego: { start: 30, x: 80 },
-  // dad leans in (98), blows (98-100), the candles go out (100) and the cheer
+  // host leans in (98), blows (98-100), the candles go out (100) and the cheer
   dc: { start: 96, x: 8, side: 'right' },
-  // the niece walks out of the entrance (20-24)
+  // the kid walks out of the entrance (20-24)
   home: { start: 19, x: 120 },
   // she and her friends stroll past under his window, left to right
   harvest: { start: 35, x: 96, side: 'right' },
@@ -165,7 +165,6 @@ const outShare = path.resolve(
   a['out-share'] && a['out-share'] !== true ? String(a['out-share']) : a.out && a.out !== true ? out.replace(/(-4k)?\.mp4$/i, '') + `-${shareH}p.mp4` : 'out/purrfect-year-2min-1080p.mp4',
 );
 const work = path.resolve(ROOT, a.work && a.work !== true ? String(a.work) : path.join('out', 'year', '2min'));
-fs.mkdirSync(work, { recursive: true });
 const jobs = Math.max(1, Number(a.jobs ?? Math.min(4, Math.max(1, os.cpus().length >> 1))));
 const art = artHash();
 const D = 0.15; // audio crossfade between entries, seconds
@@ -201,6 +200,7 @@ for (const s of segs) {
   console.log(`  ${String(s.i + 1).padStart(2)} ${s.e.id.padEnd(12)} t ${s.start.toFixed(2)}-${t1.toFixed(2)}  crop x ${String(s.x).padStart(3)}-${s.x + CW}  "${s.e.name}" · ${s.e.when}`);
 }
 if (a['dry-run']) process.exit(0);
+fs.mkdirSync(work, { recursive: true });
 
 // ---------------------------------------------------------------------------
 // video segments: lossless, art resolution, in parallel
@@ -435,7 +435,7 @@ async function probe(page) {
         // story windows from HD.summer, sampled every 0.05 s
         const S = HD.summer || {};
         const relevant = {
-          niece: ed.cast.niece,
+          kid: ed.cast.kid,
           gift: ed.cast.party === 'birthday',
           blowing: ed.cast.party === 'birthday',
           candlesOut: ed.cast.party === 'birthday',

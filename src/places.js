@@ -19,7 +19,7 @@
  *   mascot     {x, y}: top-left of the series cat's head when he sits in it
  *              (HD.mascot.draw; 9 px wide, 12 px tall plus the tail)
  *   partner    {x, base}: where a second cat sits beside him in that window
- *   entrance   {x0, x1, y0, y1}: the doors (the niece and visitors use it)
+ *   entrance   {x0, x1, y0, y1}: the doors (the kid and visitors use it)
  *   sign       {x, y, w, h}: where the small AZTMM plaque or sign goes
  *   stages     named standing areas {x0, x1, base} for groups of cats
  *   puddles    engine puddle reflections when it rains (none otherwise)

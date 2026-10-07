@@ -29,7 +29,7 @@
   //             out: 'none' | 'friends' (a group celebrates in the plaza) | 'passby' (a group walks past)
   //             party: 'none' | 'match' (the black cat on his balcony) | 'bench' (two cats on a bench)
   //                    | 'trip' (a travelling group) | 'birthday' (a party in the yard)
-  //             niece: true = the kitten visits (comes and goes)
+  //             kid: true = the kitten visits (comes and goes)
   //  tags     decorations (decor modules)
   //  puddles  false = dry ground (engine)
   const W = (a, b) => [a, b];
@@ -41,7 +41,7 @@
       place: 'apt1', light: 'night', sky: 'clear', stars: 0.7, moon: 'none', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.2, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0.5, fireworkColors: ['gold', 'magenta', 'green', 'gold', 'white'],
-      cast: { window: 'together', out: 'none', party: 'none', niece: false },
+      cast: { window: 'together', out: 'none', party: 'none', kid: false },
       tags: ['diyas-balcony', 'rangoli-plaza', 'string-lights-gold', 'marigolds', 'sparklers'],
     },
     {
@@ -51,7 +51,7 @@
       place: 'apt1', light: 'night', sky: 'overcast', stars: 0, moon: 'full', season: 'autumn',
       weather: { rain: 1, snow: 0, leaves: 0.3, petals: 0, fireflies: 0, gulls: 0, lightning: 1 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'together', out: 'none', party: 'none', niece: false },
+      cast: { window: 'together', out: 'none', party: 'none', kid: false },
       tags: ['pumpkins-balcony', 'jackolanterns-plaza', 'trick-or-treat', 'cobwebs'],
     },
     {
@@ -61,7 +61,7 @@
       place: 'apt1', light: 'golden', sky: 'broken', stars: 0, moon: 'harvest', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.8, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'firepit', fireworks: 0,
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['harvest-planters', 'leaf-garland', 'plaid-blankets', 'warm-mugs'],
     },
     {
@@ -71,7 +71,7 @@
       place: 'apt1', light: 'night', sky: 'overcast', stars: 0, moon: 'none', season: 'winter',
       weather: { rain: 0, snow: 1, leaves: 0, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['wreath-balcony', 'string-lights-color', 'plaza-xmas-tree', 'menorah-window', 'snowman-plaza', 'carolers'],
     },
     {
@@ -81,7 +81,7 @@
       place: 'apt1', light: 'night', sky: 'clear', stars: 0.6, moon: 'crescent', season: 'winter',
       weather: { rain: 0, snow: 0.25, leaves: 0, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 1,
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['string-lights-gold', 'party-windows', 'sparklers', 'logo-firework'],
     },
     {
@@ -91,7 +91,7 @@
       place: 'apt1', light: 'night', sky: 'clear', stars: 0.6, moon: 'none', season: 'winter',
       weather: { rain: 0, snow: 0.3, leaves: 0, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0.45, fireworkColors: ['red', 'gold', 'gold', 'white'],
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['red-lanterns-balcony', 'red-banners', 'tangerines', 'plaza-lanterns', 'plum-vase'],
     },
     {
@@ -101,7 +101,7 @@
       place: 'apt1', light: 'day', sky: 'fair', stars: 0, moon: 'none', season: 'spring',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0.8, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['flower-boxes-balcony', 'eggs-plaza', 'egg-basket'],
     },
     {
@@ -111,7 +111,7 @@
       place: 'apt1', light: 'dusk', sky: 'clear', stars: 0.6, moon: 'full', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 1, gulls: 0, lightning: 0 },
       fire: 'firepit', fireworks: 0,
-      cast: { window: 'alone', out: 'friends', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'friends', party: 'none', kid: false },
       tags: ['flower-garland-balcony', 'paper-lantern-string', 'flower-crowns'],
     },
     {
@@ -121,7 +121,7 @@
       place: 'apt1', light: 'night', sky: 'clear', stars: 0.6, moon: 'crescent', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.6, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'empty', out: 'friends', party: 'match', niece: true },
+      cast: { window: 'empty', out: 'friends', party: 'match', kid: true },
       tags: ['flags-matchday', 'saltire-banner', 'tv-match', 'pub-sign', 'football', 'goal-fireworks'],
     },
     {
@@ -131,7 +131,7 @@
       place: 'soho', light: 'night', sky: 'clear', stars: 0.3, moon: 'none', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0.8, fireworkColors: ['red', 'white', 'blue', 'red', 'white', 'blue', 'gold'],
-      cast: { window: 'empty', out: 'none', party: 'bench', niece: false },
+      cast: { window: 'empty', out: 'none', party: 'bench', kid: false },
       tags: ['bunting-usa', 'shopping-bags', 'heart-lantern'],
     },
     {
@@ -141,7 +141,7 @@
       place: 'bhills', light: 'day', sky: 'clear', stars: 0, moon: 'none', season: 'summer', puddles: false,
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'empty', out: 'none', party: 'trip', niece: true },
+      cast: { window: 'empty', out: 'none', party: 'trip', kid: true },
       tags: ['valet-stand', 'planters'],
     },
     {
@@ -151,7 +151,7 @@
       place: 'marina', light: 'day', sky: 'fair', stars: 0, moon: 'none', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0, gulls: 1, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'empty', out: 'none', party: 'trip', niece: true, shoulderRide: true },
+      cast: { window: 'empty', out: 'none', party: 'trip', kid: true, shoulderRide: true },
       tags: ['boats', 'brick-castle', 'giraffe-plush'],
     },
     {
@@ -161,7 +161,7 @@
       place: 'herndon', light: 'dusk', sky: 'clear', stars: 0.4, moon: 'full', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.7, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'empty', out: 'none', party: 'birthday', niece: true },
+      cast: { window: 'empty', out: 'none', party: 'birthday', kid: true },
       tags: ['birthday-table', 'balloons', 'bunting-party'],
     },
     {
@@ -171,7 +171,7 @@
       place: 'apt1', light: 'dusk', sky: 'dusk', stars: 0.3, moon: 'crescent', season: 'summer',
       weather: { rain: 0, snow: 0, leaves: 0, petals: 0, fireflies: 0.8, gulls: 0, lightning: 0 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'together', out: 'none', party: 'none', niece: true },
+      cast: { window: 'together', out: 'none', party: 'none', kid: true },
       tags: ['flower-boxes-balcony'],
     },
     {
@@ -181,7 +181,7 @@
       place: 'apt2', light: 'golden', sky: 'broken', stars: 0, moon: 'harvest', season: 'autumn',
       weather: { rain: 0, snow: 0, leaves: 0.8, petals: 0, fireflies: 0, gulls: 0, lightning: 0 },
       fire: 'firepit', fireworks: 0,
-      cast: { window: 'alone', out: 'passby', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'passby', party: 'none', kid: false },
       tags: ['harvest-planters', 'mooncakes-sill'],
     },
     {
@@ -191,7 +191,7 @@
       place: 'apt2', light: 'night', sky: 'overcast', stars: 0, moon: 'full', season: 'autumn',
       weather: { rain: 1, snow: 0, leaves: 0.3, petals: 0, fireflies: 0, gulls: 0, lightning: 1 },
       fire: 'none', fireworks: 0,
-      cast: { window: 'alone', out: 'passby', party: 'none', niece: false },
+      cast: { window: 'alone', out: 'passby', party: 'none', kid: false },
       tags: ['pumpkins-lobby', 'jackolanterns-plaza', 'trick-or-treat', 'costumes'],
     },
   ];

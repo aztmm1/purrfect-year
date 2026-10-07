@@ -101,11 +101,11 @@ for (const ed of eds) {
       }
       if (t0 >= 0) res[k] = [t0, t1];
     }
-    if (ed.cast.niece && S.niece) {
+    if (ed.cast.kid && S.kid) {
       for (let i = 0; i < HD.LOOP * 10; i++) {
-        const v = S.niece(i / 10);
+        const v = S.kid(i / 10);
         if (v.here && v.phase === 'in') {
-          res.niece = [i / 10, i / 10 + 4];
+          res.kid = [i / 10, i / 10 + 4];
           break;
         }
       }

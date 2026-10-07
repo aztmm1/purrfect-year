@@ -21,11 +21,11 @@
     sec,
     win,
     /**
-     * Niece visits: she walks in, stays, walks out. Returns
+     * Kid visits: she walks in, stays, walks out. Returns
      *  { here: bool, phase: 'in' | 'stay' | 'out', u: 0..1 progress in phase }
      * Two visits per loop in home chapters; she stays all loop on trips.
      */
-    niece(t) {
+    kid(t) {
       const ed = HD.edition.id;
       if (ed === 'la' || ed === 'sandiego' || ed === 'dc') return { here: true, phase: 'stay', u: 0 };
       const visits = [
@@ -44,11 +44,11 @@
     candlesOut(t) {
       return win(t, 100, 112);
     },
-    /** the moment dad leans in to blow (just before candlesOut) */
+    /** the moment host leans in to blow (just before candlesOut) */
     blowing(t) {
       return win(t, 98, 100);
     },
-    /** DC birthday: dad hands the niece her small yellow toy crane (0..1 in the
+    /** DC birthday: host hands the kid her small yellow toy crane (0..1 in the
      *  hand-over window); before the window the crane sits wrapped by the cake,
      *  after it she plays with it for the rest of the loop */
     gift(t) {

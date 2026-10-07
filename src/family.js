@@ -9,7 +9,7 @@
  * true colours by day, warm at golden hour and cool but legible at night.
  *
  * Who is where comes from HD.edition.cast and the anchors of HD.place():
- *   window 'together'   HD.drawPartner(g, t, x, base): his wife beside the
+ *   window 'together'   HD.drawPartner(g, t, x, base): his partner beside the
  *                       series cat in the cat window (the building calls it
  *                       before its balcony rail or window frame)
  *   out 'friends'       she and three friends (ginger, cream, grey tabby)
@@ -19,9 +19,9 @@
  *   party 'match'       him on his balcony in a red jersey; HD.drawBalcony
  *                       lets the building draw him before its rail
  *   party 'bench'       the couple on the bench, a heart floats up
- *   party 'trip'        him, the niece, his sister and her husband
- *   party 'birthday'    the party round the table with his dad
- *   niece               she comes out of the entrance and goes back in
+ *   party 'trip'        him, the kid, the guest couple
+ *   party 'birthday'    the party round the table with the host
+ *   kid               she comes out of the entrance and goes back in
  *   tag trick-or-treat  tiny costumed kittens call at the lobby
  * Scene layer z 45..49, plus z 34.97 for the back row standing behind the
  * birthday table (so the tablecloth hides their legs).
@@ -404,7 +404,7 @@
       set(G, HX - 1, HY + 5, 'w');
       set(G, HX + 9, HY + 4, 'w');
     }
-    // ---- long straight hair (his wife) ----
+    // ---- long straight hair (his partner) ----
     if (sp.hair === 'long') {
       const br = p.br || 0;
       for (let x = 1; x <= 7; x++) set(G, HX + x, HY + 2, 'H');
@@ -437,7 +437,7 @@
       }
       if (p.gust) set(G, p.gust > 0 ? HX + 10 : HX - 2, HY + 3, 'H');
     }
-    // ---- wavy hair (his sister) ----
+    // ---- wavy hair (guestA) ----
     if (sp.hair === 'wavy') {
       for (let y = HY + 2; y <= HY + 11; y++) {
         const k = y - HY;
@@ -533,7 +533,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // the niece: oversized round head (pointed ears, top-knot) with a big pink
+  // the kid: oversized round head (pointed ears, top-knot) with a big pink
   // bow, big shiny eyes, a tiny body. Head col c / row r -> world
   // (x - 4 + c, base - 9 + r); feet on base.
   // ---------------------------------------------------------------------
@@ -662,12 +662,12 @@
         frame: c('#d8c070'),
         lens: c('#3a7ae0'),
       });
-    // ---- his wife ----
+    // ---- his partner ----
     const herFur = { fur: c('#2a2026'), hair: 'long', hairC: c('#221c2e'), sheenC: c('#5c5680'), light: c('#3a2c34'), eye: '#c8d870', nose: c('#a05868'), inner: c('#b06878'), tongue: c('#e07080'), mouthC: c('#4a2630'), happyEm: true, shoes: c('#1e1c24') };
     const partner = Object.assign({ key: pre + 'partner', mouth: 'smile', shirt: V('#fff6e8'), neck: 'tee', pants: V('#2a2a34') }, herFur);
-    // ---- his sister and her husband, his dad ----
-    const sister = {
-      key: pre + 'sister',
+    // ---- the guest couple and the host ----
+    const guestA = {
+      key: pre + 'guestA',
       fur: c('#32242a'),
       hair: 'wavy',
       hairC: c('#3a241e'),
@@ -691,8 +691,8 @@
       pants: c('#ece8e0'),
       shoes: c('#c8b890'),
     };
-    const bil = {
-      key: pre + 'bil',
+    const guestB = {
+      key: pre + 'guestB',
       fur: c('#8a8a90'),
       dark: c('#3e3e46'),
       light: c('#c8c8cc'),
@@ -714,10 +714,10 @@
       pants: c('#2a2a30'),
       shoes: c('#7a5a3a'),
     };
-    if (id === 'la') Object.assign(bil, { shirt: c('#d8dce4'), shirtAlt: c('#7a8aa8'), pattern: 'stripesV', neck: 'shirt', collar: c('#e8ecf2') });
-    if (id === 'dc') Object.assign(bil, { glasses: null, shirt: c('#4a5670'), shirtAlt: c('#7a879c'), pattern: 'plaid', neck: 'shirt', collar: c('#8a96aa') });
-    const dad = {
-      key: pre + 'dad',
+    if (id === 'la') Object.assign(guestB, { shirt: c('#d8dce4'), shirtAlt: c('#7a8aa8'), pattern: 'stripesV', neck: 'shirt', collar: c('#e8ecf2') });
+    if (id === 'dc') Object.assign(guestB, { glasses: null, shirt: c('#4a5670'), shirtAlt: c('#7a879c'), pattern: 'plaid', neck: 'shirt', collar: c('#8a96aa') });
+    const host = {
+      key: pre + 'host',
       fur: c('#2e2428'),
       silver: c('#9a9ca4'),
       muzzle: 'x',
@@ -749,7 +749,7 @@
       tabby: { fur: c('#a0a6b0'), dark: c('#4e545e'), light: c('#dfe2e8'), muzzle: 'f', tabby: true, inner: c('#d8909c'), eye: '#a8dc68', nose: c('#c87888'), tongue: c('#e07080'), mouthC: '#2a1a22', happyEm: true },
       partner: herFur,
     };
-    // ---- the niece's outfit ----
+    // ---- the kid's outfit ----
     const kitC = {
       F: c('#6e4430'),
       E: c('#6e4430'),
@@ -776,9 +776,9 @@
       sandiego: { top: c('#3c66e0', 0.2) },
       dc: { top: c('#6a1830', 0.15), alt: c('#f4c8d4'), dress: true, cup: true },
     }[id] || { top: c('#f27aa8', 0.15), alt: c('#ffd0e2', 0.15) };
-    const niece = Object.assign({ key: pre + 'kit' }, kitTop);
-    niece.map = Object.assign({}, kitC, { T: kitTop.top, U: kitTop.alt || kitTop.top });
-    return { c, V, you, partner, sister, bil, dad, friend, niece, kitC };
+    const kid = Object.assign({ key: pre + 'kit' }, kitTop);
+    kid.map = Object.assign({}, kitC, { T: kitTop.top, U: kitTop.alt || kitTop.top });
+    return { c, V, you, partner, guestA, guestB, host, friend, kid, kitC };
   }
   const CAST = HD.perEdition(makeCast);
 
@@ -891,7 +891,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // the niece
+  // the kid
   // ---------------------------------------------------------------------
   function drawKit(g, t, o, x, base, p) {
     if (p.pose !== 'ride' && p.pose !== 'held') {
@@ -996,7 +996,7 @@
   }
 
   // =====================================================================
-  // HIS WIFE IN THE WINDOW: HD.drawPartner(g, t, x, base)
+  // HIS PARTNER IN THE WINDOW: HD.drawPartner(g, t, x, base)
   // A dark silhouette like the series cat, with long straight hair falling
   // past her shoulder and a long plume tail. x = left edge of her 11-px
   // column (head at x+2..x+8), base = the row under her (as the series
@@ -1065,8 +1065,8 @@
     g.px(x - 2 + (sw > 0.4 ? 1 : 0), base - 6, tc);
     g.px(x - 1 + (sw > 0.4 ? 1 : sw < -0.4 ? -1 : 0), base - 7, WP_C.J);
     g.sprite(winPartner(k), x, top);
-    // when the niece waves up from the sidewalk, she waves back
-    if (k === 0 && HD.edition.cast.niece && nieceWavingHome(t)) {
+    // when the kid waves up from the sidewalk, she waves back
+    if (k === 0 && HD.edition.cast.kid && nieceWavingHome(t)) {
       const f = Math.floor(T.step(t, 5) * 5) % 2;
       g.vline(x - 1, top + 4, top + 7, WP_C.K);
       g.px(x - 2 + f, top + 3, WP_C.K);
@@ -1876,7 +1876,7 @@
   }
 
   // =====================================================================
-  // THE NIECE DROPS BY: out of the entrance and back (cast.niece at home)
+  // THE KID DROPS BY: out of the entrance and back (cast.kid at home)
   // =====================================================================
   const KIT_SPEED = 8;
   /** her route from the entrance: down to the sidewalk, then along to a spot */
@@ -1909,13 +1909,13 @@
     for (let i = 0; i + 1 < pts.length; i++) s += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
     return s;
   }
-  /** seconds since she came out and until she goes back in, from HD.summer.niece */
+  /** seconds since she came out and until she goes back in, from HD.summer.kid */
   function visitClock(t) {
-    const v = SU.niece(t);
+    const v = SU.kid(t);
     if (!v.here) return null;
     const rate = (tt) => {
-      const a = SU.niece(tt);
-      const b2 = SU.niece(tt + 0.05);
+      const a = SU.kid(tt);
+      const b2 = SU.kid(tt + 0.05);
       return a.phase === b2.phase && b2.u > a.u ? (b2.u - a.u) / 0.05 : 0;
     };
     let r = rate(t) || rate(t - 0.06);
@@ -1932,7 +1932,7 @@
   }
   function nieceScene(t) {
     const ed = HD.edition;
-    if (!ed.cast.niece || ed.cast.party === 'trip' || ed.cast.party === 'birthday') return null;
+    if (!ed.cast.kid || ed.cast.party === 'trip' || ed.cast.party === 'birthday') return null;
     const pl = HD.place();
     if (!pl.entrance || !pl.catWindow) return null;
     const ts = T.step(t, 8);
@@ -1959,7 +1959,7 @@
     dir = walking ? (vc.rem < pause + walkT ? -sx : sx) : 0;
     return { x: R(x), base: R(y), walking, dir, vc, atDoor: d < 3 };
   }
-  /** seconds into the niece's wave cycle at home (she waves for the first 2) */
+  /** seconds into the kid's wave cycle at home (she waves for the first 2) */
   function homeWaveAge(t) {
     const pc = T.cycle(T.step(t, 8), 5, 9.5, 63);
     return pc.age * pc.P;
@@ -2015,7 +2015,7 @@
         }
       }
     }
-    drawKit(g, t, C.niece, k.x, k.base + bob, { pose, arms, blink: ki.blink, look });
+    drawKit(g, t, C.kid, k.x, k.base + bob, { pose, arms, blink: ki.blink, look });
   }
 
   // =====================================================================
@@ -2091,16 +2091,16 @@
   }
 
   // =====================================================================
-  // TRIPS: him, the niece, his sister and her husband (cast.party 'trip')
+  // TRIPS: him, the kid, the guest couple (cast.party 'trip')
   // =====================================================================
   function tripSpots() {
     const pl = HD.place();
     const st = pl.stages.family;
     const w = st.x1 - st.x0;
-    if (HD.edition.cast.shoulderRide) return { bil: st.x0 + R(w * 0.2), sister: st.x0 + R(w * 0.38), you: st.x0 + R(w * 0.7), base: st.base };
-    return { bil: st.x0 + R(w * 0.12), sister: st.x0 + R(w * 0.33), you: st.x0 + R(w * 0.56), kitHome: st.x0 + R(w * 0.75), kitAway: st.x0 + R(w * 0.45), base: st.base };
+    if (HD.edition.cast.shoulderRide) return { guestB: st.x0 + R(w * 0.2), guestA: st.x0 + R(w * 0.38), you: st.x0 + R(w * 0.7), base: st.base };
+    return { guestB: st.x0 + R(w * 0.12), guestA: st.x0 + R(w * 0.33), you: st.x0 + R(w * 0.56), kitHome: st.x0 + R(w * 0.75), kitAway: st.x0 + R(w * 0.45), base: st.base };
   }
-  /** the niece trots over to her mum now and then and back to him */
+  /** the kid trots over to her grown-up now and then and back to him */
   function tripKit(t, P2) {
     const s = sec(t);
     const trips = [
@@ -2130,8 +2130,8 @@
     const br = R(SU.breeze(t));
     if (HD.edition.cast.shoulderRide) return drawShoulderRide(g, t, C, S);
     const k = tripKit(t, S);
-    drawAdult(g, t, Object.assign(C.bil, { tailSide: -1 }), S.bil, S.base - 1, 5, { look: k.nearMum ? 1 : undefined });
-    drawAdult(g, t, Object.assign(C.sister, { tailSide: -1 }), S.sister, S.base, 6, { br, look: k.nearMum ? 1 : undefined });
+    drawAdult(g, t, Object.assign(C.guestB, { tailSide: -1 }), S.guestB, S.base - 1, 5, { look: k.nearMum ? 1 : undefined });
+    drawAdult(g, t, Object.assign(C.guestA, { tailSide: -1 }), S.guestA, S.base, 6, { br, look: k.nearMum ? 1 : undefined });
     const yi = idle(t, 3);
     const hop = !k.walking && !k.nearMum && T.cycle(ts, 2, 13, 77).age * 13 < 1.5;
     drawAdult(g, t, Object.assign(C.you, { tailSide: -1 }), S.you, S.base, 3, { look: !k.nearMum ? 1 : yi.look, mouth: hop ? 'laugh' : 'smile' });
@@ -2139,12 +2139,12 @@
     const wf = Math.floor(ts * 8) % 4;
     const kp = k.walking ? (wf === 1 ? 'walk' : wf === 3 ? 'walk2' : 'stand') : 'stand';
     const bob = (k.walking && wf & 1) || (hop && wf & 1) ? -1 : 0;
-    drawKit(g, t, C.niece, k.x, S.base + 1 + bob, { pose: kp, arms: hop ? 'up' : 'down', blink: ki.blink, look: k.walking ? k.dir : k.nearMum ? 1 : -1 });
+    drawKit(g, t, C.kid, k.x, S.base + 1 + bob, { pose: kp, arms: hop ? 'up' : 'down', blink: ki.blink, look: k.walking ? k.dir : k.nearMum ? 1 : -1 });
   }
   function drawShoulderRide(g, t, C, S) {
     const br = R(SU.breeze(t));
-    drawAdult(g, t, Object.assign(C.sister, { tailSide: -1 }), S.sister, S.base, 6, { br, look: 1 });
-    drawAdult(g, t, Object.assign(C.bil, { tailSide: -1 }), S.bil, S.base - 1, 5, { look: 1 });
+    drawAdult(g, t, Object.assign(C.guestA, { tailSide: -1 }), S.guestA, S.base, 6, { br, look: 1 });
+    drawAdult(g, t, Object.assign(C.guestB, { tailSide: -1 }), S.guestB, S.base - 1, 5, { look: 1 });
     const x = S.you;
     const base = S.base;
     const yi = idle(t, 3);
@@ -2158,14 +2158,14 @@
     const ki = kitIdle(t, 12);
     const hy = me.top + HY0;
     const kb = hy + 2;
-    const leg = C.niece.map.F;
+    const leg = C.kid.map.F;
     for (const side of [-1, 1]) {
       g.px(x + side * 3, hy + 2, leg);
       g.px(x + side * 4, hy + 3, leg);
-      g.px(x + side * 5, hy + 4, C.niece.map.z);
+      g.px(x + side * 5, hy + 4, C.kid.map.z);
     }
     const arms = waving ? (lift ? 'up' : waveArm(t)) : 'down';
-    blitKit(g, C.niece, { pose: 'ride', arms, blink: ki.blink, look: waving ? 1 : ki.look }, x, kb);
+    blitKit(g, C.kid, { pose: 'ride', arms, blink: ki.blink, look: waving ? 1 : ki.look }, x, kb);
     // the giraffe plush: tucked under her arm, or held up high
     if (waving && lift) drawGiraffe(g, x - 3, kb - 21);
     else drawGiraffe(g, x - 8, kb - 8, true);
@@ -2179,13 +2179,13 @@
     const tb = pl.table;
     const back = (pl.stages && pl.stages.back) || { x0: tb.x - 28, x1: tb.x + 24, base: tb.base - 9 };
     const front = (pl.stages && pl.stages.party) || { x0: tb.x - 32, x1: tb.x + 38, base: tb.base };
-    // back row: his sister clear of the balloon strings at the table's left
-    // corner, dad at the right end by the cake, her husband beside dad;
-    // front row: the niece in front of the table, him at the right
+    // back row: guestA clear of the balloon strings at the table's left
+    // corner, host at the right end by the cake, guestB beside the host;
+    // front row: the kid in front of the table, him at the right
     return {
-      sister: back.x0 + 2,
-      bil: tb.x + 29,
-      dad: tb.x + 17,
+      guestA: back.x0 + 2,
+      guestB: tb.x + 29,
+      host: tb.x + 17,
       back: back.base,
       you: tb.x + 41,
       youBase: front.base + 2,
@@ -2239,18 +2239,18 @@
     const st = dcState(t);
     const hb = (k) => (st.cheer ? hopAt(t, k) : 0);
     const br = R(SU.breeze(t));
-    drawAdult(g, t, Object.assign(C.sister, { tailSide: -1 }), D.sister, D.back - hb(1), 6, st.cheer ? cheer() : { br, look: 1 });
-    drawAdult(g, t, Object.assign(C.bil, { tailSide: -1 }), D.bil, D.back - hb(3), 5, st.cheer ? cheer() : { look: st.out >= 0 ? 1 : undefined, mouth: st.out >= 0 ? 'laugh' : 'smile' });
-    drawAdult(g, t, Object.assign(C.dad, { tailSide: 1 }), D.dad, D.back - hb(2), 9, dadPose(t, st));
+    drawAdult(g, t, Object.assign(C.guestA, { tailSide: -1 }), D.guestA, D.back - hb(1), 6, st.cheer ? cheer() : { br, look: 1 });
+    drawAdult(g, t, Object.assign(C.guestB, { tailSide: -1 }), D.guestB, D.back - hb(3), 5, st.cheer ? cheer() : { look: st.out >= 0 ? 1 : undefined, mouth: st.out >= 0 ? 'laugh' : 'smile' });
+    drawAdult(g, t, Object.assign(C.host, { tailSide: 1 }), D.host, D.back - hb(2), 9, dadPose(t, st));
     if (st.kit === 'held') {
       const ki = kitIdle(t, 12);
       const bob = st.play && Math.floor(T.step(t, 4) * 4) % 2 ? -1 : 0;
       const hx = D.held;
       const hb0 = D.back - 3;
-      blitKit(g, C.niece, { pose: 'held', arms: st.play ? 'up' : 'down', blink: !st.play && ki.blink, look: -1 }, hx, hb0 + bob);
-      // dad's paw under her, from his side
-      g.px(hx + 3, hb0 - 1 + bob, C.dad.fur);
-      g.px(hx + 4, hb0 - 1 + bob, C.dad.fur);
+      blitKit(g, C.kid, { pose: 'held', arms: st.play ? 'up' : 'down', blink: !st.play && ki.blink, look: -1 }, hx, hb0 + bob);
+      // the host's paw under her, from his side
+      g.px(hx + 3, hb0 - 1 + bob, C.host.fur);
+      g.px(hx + 4, hb0 - 1 + bob, C.host.fur);
     }
   }
   function drawDC(g, t) {
@@ -2261,7 +2261,7 @@
     const dadTop = D.back - (AH - 1);
     if (st.blow >= 0) {
       // his breath: pale dithered puffs from his mouth toward the candles
-      const mx = D.dad - CX + HX0 - 2 + 3;
+      const mx = D.host - CX + HX0 - 2 + 3;
       const my = dadTop + HY0 - 2 + 6;
       for (let i = 0; i < 3; i++) {
         const u = (st.blow * 2.4 + i * 0.34) % 1;
@@ -2274,10 +2274,10 @@
     }
     const yhop = st.cheer ? hopAt(t, 0) : 0;
     drawAdult(g, t, Object.assign(C.you, { tailSide: 1 }), D.you, D.youBase - yhop, 3, st.cheer ? cheer() : { look: -1, mouth: st.out >= 0 || st.play ? 'laugh' : 'smile' });
-    // the present waits on the table until dad picks it up (and is back, wrapped, at the end)
+    // the present waits on the table until host picks it up (and is back, wrapped, at the end)
     if (st.s < 40.6 || st.s >= 228.4) drawBox(g, D.gift[0], D.gift[1]);
     const ki = kitIdle(t, 12);
-    const o = C.niece;
+    const o = C.kid;
     const kx = D.kit;
     const kb = D.kitBase;
     const cup = () => {
@@ -2293,7 +2293,7 @@
       const x = R(hx + (kx - hx) * q);
       const b = R(hb0 + (kb - hb0) * q - Math.sin(q * Math.PI) * 3);
       blitKit(g, o, { pose: 'held', arms: 'up', look: -1 }, x, b);
-      if (q < 0.6) g.px(x + 4, b - 3, C.dad.fur);
+      if (q < 0.6) g.px(x + 4, b - 3, C.host.fur);
       return;
     }
     if (st.kit === 'gift') {
@@ -2304,7 +2304,7 @@
       else if (g0 >= 0.85) arms = 'up';
       drawKit(g, t, o, kx, kb, { pose, arms, blink: pose === 'stand' && ki.blink, look: pose === 'stand' ? 1 : 0 });
       if (g0 >= 0.1 && g0 < 0.4) {
-        // dad lifts the box off the table and holds it out to her
+        // host lifts the box off the table and holds it out to her
         const q = Math.min(1, (g0 - 0.1) / 0.24);
         const [px, py] = D.gift;
         drawBox(g, R(px + (kx + 4 - px) * q), R(py + (kb - 1 - py) * q - Math.sin(q * Math.PI) * 6));
@@ -2375,7 +2375,7 @@
     if (K) out.push([K.x, K.base, 3]);
     if (ed.cast.party === 'trip') {
       const Sp = tripSpots();
-      out.push([Sp.bil, Sp.base - 1, 4], [Sp.sister, Sp.base, 4], [Sp.you, Sp.base, 4]);
+      out.push([Sp.guestB, Sp.base - 1, 4], [Sp.guestA, Sp.base, 4], [Sp.you, Sp.base, 4]);
       if (!ed.cast.shoulderRide) out.push([tripKit(t, Sp).x, Sp.base + 1, 3]);
     }
     const O = totScene(t);

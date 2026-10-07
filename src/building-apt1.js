@@ -1819,8 +1819,8 @@
   const toggled = (tg, s) => (s >= tg.a && s < tg.b) || (s + HD.LOOP >= tg.a && s + HD.LOOP < tg.b);
 
   function doorOpen(t) {
-    // the lobby doors slide open as the niece comes out and goes back in
-    const n = HD.summer.niece(t);
+    // the lobby doors slide open as the kid comes out and goes back in
+    const n = HD.summer.kid(t);
     if (!n.here) return 0;
     const P0 = 0.014;
     let o = 0;
@@ -1839,7 +1839,7 @@
     if (A.party.length) drawParty(g, t, A);
     if (A.walkers.length) drawWalkers(g, t, A);
     if (A.bulbs) blit2(g, A.bulbs[Math.floor(T.phase(t, 1.5, 0.013) * 3) % 3]);
-    if (HD.edition.cast && HD.edition.cast.niece && HD.summer) {
+    if (HD.edition.cast && HD.edition.cast.kid && HD.summer) {
       const o = doorOpen(t);
       if (o > 0) blit2(g, A.doors[o - 1]);
     }

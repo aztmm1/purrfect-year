@@ -13,7 +13,7 @@
  *            (y 258..262), rocking gently; the toy-brick castle on the
  *            promenade at place.castle (boats, brick-castle)
  *   herndon  the birthday table at place.table: a cloth, a pink cake and
- *            three candles that lean when dad blows (HD.summer.blowing), go
+ *            three candles that lean when host blows (HD.summer.blowing), go
  *            out with smoke wisps (candlesOut) and are lit again; balloons
  *            tied to the outer porch posts and the table; party bunting
  *            along the porch (birthday-table, balloons, bunting-party)
@@ -322,7 +322,7 @@
   const RELIGHT = 112;
   const RELIGHT_STEP = 0.8;
   const MATCH = 0.45;
-  /** per-candle state: lit, leaning (dad is blowing), or out with a smoke wisp */
+  /** per-candle state: lit, leaning (host is blowing), or out with a smoke wisp */
   function candleState(t, i) {
     const s = HD.summer.sec(t);
     const out = HD.summer.candlesOut(t);
@@ -362,7 +362,7 @@
         return;
       }
       if (st.blow >= 0) {
-        // dad blows from the right: the flames lean away, shrink and gutter
+        // host blows from the right: the flames lean away, shrink and gutter
         const b = st.blow;
         const lean = b > 0.2 ? -1 : 0;
         e.px(c.x, c.y - 1, P.fire[b > 0.6 ? 6 : 8]);

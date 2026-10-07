@@ -115,19 +115,17 @@ The renderer computes each frame directly from `t`, so frames are exact and
 none are dropped. It doesn't capture the screen.
 
 ```bash
-# the year in 90 seconds: all 16 entries in order, 1920×1080, with the soundtrack
-node tools/make-year.mjs                 # -> out/purrfect-year-90s.mp4
-
-# the 35-second vertical cut for chats and stories, 1080×1920, under 16 MB
-node tools/make-year.mjs --whatsapp      # -> out/purrfect-year-whatsapp.mp4
+# the year in two minutes: all 16 entries in order (7.5 s each) with the soundtrack
+node tools/make-year.mjs   # -> out/purrfect-year-2min-4k.mp4 (3840×2160)
+                           #    out/purrfect-year-2min-1080p.mp4 (1920×1080)
 ```
 
-- The 90-second cut shows each entry's name and date as a small pixel-font lower
-  third. `--no-titles` turns it off.
-- The vertical cut puts the series title, the entry name, the date and the city
-  in bands above and below the picture.
-- `--resume` reuses the segments that are already rendered, `--crf N` sets the
-  quality, and `--probe` prints candidate start moments for each entry.
+- Each entry shows its name and date as a small pixel-font lower third.
+  `--no-titles` turns it off.
+- Both files come from one encoding pass; the 1080p copy is the same picture at
+  half size. `--no-share` skips it.
+- `--resume` reuses the segments and audio that are already rendered, `--crf N`
+  sets the quality, and `--probe` prints candidate start moments for each entry.
 
 One entry as a seamless loop (7200 frames at 30 fps):
 
@@ -162,9 +160,7 @@ tools/make-long.sh out/christmas-loop-4k.mp4 out/christmas-loop.wav 60 out/chris
 `make-long.sh` takes the loop, an audio file, the length in minutes (3 by
 default) and the output file. You can pass your own music file instead of the
 WAV. If the loop was split into parts (`…-part1-of-6.mp4`), pass part 1 and the
-script joins the rest losslessly first. Upload long videos in 4K
-(`--scale 8`), even for 1080p viewers: YouTube gives 4K uploads a much higher
-bitrate, so rain and pixel edges stay sharp.
+script joins the rest losslessly first.
 
 ### Soundtrack
 
@@ -247,11 +243,8 @@ src/
   atmosphere-seasons.js which atmosphere each entry gets
   family.js             every cat other than the series cat at his window
   brand.js              the small AZTMM sign at each place and the New Year logo firework
-  bg.js, bg-seasons.js, ground.js, ground-seasons.js, house.js, house-seasons.js,
-  props.js, props-seasons.js
-                        legacy: the v1 cottage modules; index.html no longer loads them
 tools/
-  make-year.mjs         the 90-second and 35-second year cuts
+  make-year.mjs         the two-minute year video (4K and 1080p)
   render-video.mjs      one entry as a seamless loop
   make-long.sh          a long video from one loop and an audio file
   shot.mjs, sheet.mjs   still frames and contact sheets

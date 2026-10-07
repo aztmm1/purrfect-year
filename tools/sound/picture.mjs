@@ -1,6 +1,6 @@
 // What the picture does, by loop time, so the soundtrack can follow it:
 //  - the 16 entries and their fields (src/editions.js, evaluated in a sandbox)
-//  - the shared story windows (src/summer.js: goal, candles, heart, niece...)
+//  - the shared story windows (src/summer.js: goal, candles, heart, kid...)
 //  - fireworks bursts (HD._fireworks.show()), lightning strikes (HD.sky.flash /
 //    bolt) and the New Year logo firework (HD.brand.logoWindow), read from the
 //    live page in headless Chromium.
@@ -70,7 +70,7 @@ export function storyWindows(id) {
     }
     out[name] = wins;
   };
-  for (const k of ['goal', 'candlesOut', 'blowing', 'heart', 'gift', 'niece']) if (typeof S[k] === 'function') scan(k, S[k].bind(S));
+  for (const k of ['goal', 'candlesOut', 'blowing', 'heart', 'gift', 'kid']) if (typeof S[k] === 'function') scan(k, S[k].bind(S));
   return out;
 }
 

@@ -1177,9 +1177,9 @@
     S.cheering = GW && S.cheer.length ? cheerState(t, g, S) : false;
   }
 
-  // ---- home: a firefly visits the niece ----
+  // ---- home: a firefly visits the kid ----
   // family walks her out of the entrance to the door stage, just right of the
-  // cat window, and she waits there through HD.summer.niece's 'stay'. A few
+  // cat window, and she waits there through HD.summer.kid's 'stay'. A few
   // seconds after she arrives one firefly comes over from the plaza, low
   // along the sidewalk, hovers over her head with a soft steady glow, and
   // drifts back before she goes in.
@@ -1187,9 +1187,9 @@
   const V_FLY = 6;
   const V_HOLD = 14;
   function visitState(t) {
-    const v = HD.summer && HD.summer.niece ? HD.summer.niece(t) : null;
+    const v = HD.summer && HD.summer.kid ? HD.summer.kid(t) : null;
     if (!v || !v.here || v.phase !== 'stay') return null;
-    const v2 = HD.summer.niece(t + 0.05);
+    const v2 = HD.summer.kid(t + 0.05);
     const dur = v2.phase === 'stay' && v2.u > v.u ? 0.05 / (v2.u - v.u) : 60;
     const el = v.u * dur;
     if (el < V_AT || el > V_AT + 2 * V_FLY + V_HOLD || V_AT + 2 * V_FLY + V_HOLD > dur - 3) return null;
@@ -1298,7 +1298,7 @@
       const k = poolK(sum);
       if (k > 0) L.add({ x: S.cheerPool[0], y: S.cheerPool[1], r: 40, ry: 22, color: HD.LIGHT.firefly, i: POOL_I * k, bands: 5, pow: 2.2 });
     }
-    // home: the visiting firefly lights the niece a little
+    // home: the visiting firefly lights the kid a little
     if (S.cfg.visit) {
       const p = visitState(t);
       const k = p ? steps4(p[2] / 0.68) : 0;
