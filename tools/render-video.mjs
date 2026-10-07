@@ -40,7 +40,8 @@ const [OW, OH] = pad || [SW, SH];
 if (OW < SW || OH < SH) throw new Error(`--pad ${OW}x${OH} is smaller than the scaled picture ${SW}x${SH}`);
 const fade = Number(a.fade || 0);
 const padF =
-  (pad ? `,pad=${OW}:${OH}:${(OW - SW) >> 1}:${(OH - SH) >> 1}:color=black` : '') +
+  // even offsets: yuv420p rounds odd ones down, which would shift the picture by a pixel
+  (pad ? `,pad=${OW}:${OH}:${((OW - SW) >> 1) & ~1}:${((OH - SH) >> 1) & ~1}:color=black` : '') +
   (fade > 0 ? `,fade=t=in:st=0:d=${fade},fade=t=out:st=${(seconds - fade).toFixed(3)}:d=${fade}` : '');
 const color709 = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'];
 const vfYuv = `scale=${SW}:${SH}:flags=neighbor:out_color_matrix=bt709:out_range=tv${padF}`;
