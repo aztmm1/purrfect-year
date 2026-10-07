@@ -49,6 +49,8 @@ export async function openDiorama(query = {}, { html = 'index.html', viewport = 
   // every tool accepts --edition <id> (see src/editions.js)
   const cli = parseArgs();
   if (cli.edition && query.edition === undefined) query = { ...query, edition: cli.edition };
+  // --nightout 1 previews the night-out family group before its edition tags ship
+  if (cli.nightout && query.nightout === undefined) query = { ...query, nightout: cli.nightout };
   // never touch the network (the page only links an optional web font)
   await page.route(/^https?:\/\//, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   const q = new URLSearchParams({ export: '1', ...Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== '')) });
