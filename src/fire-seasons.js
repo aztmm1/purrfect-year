@@ -50,6 +50,18 @@
   RAMPS.willow = [mix(P.fire[2], SKY, 0.5), P.fire[3], P.fire[5], P.amber[5], P.gold[5], P.gold[6], '#fff8e0'];
   // rocket comet tail
   const TAIL = [mix(P.fire[2], SKY, 0.4), P.fire[4], P.fire[6], P.amber[6], P.amber[8]];
+  // Summer Story ramps (shells flagged `story` only; the original shows keep
+  // RAMPS): a blue whose dim end stays visible on the navy sky instead of
+  // sinking into it, and a silver-white glitter for the willows (the amber
+  // willow reads as an orange jellyfish in a red/white/blue show)
+  const SRAMPS = Object.assign({}, RAMPS);
+  {
+    const f = P.firework.blue;
+    const b0 = mix(f[1], SKY, 0.35);
+    SRAMPS.blue = [mix(b0, SKY, 0.35), b0, mix(b0, f[1], 0.5), f[1], mix(f[1], f[2], 0.45), f[2], mix(f[2], '#ffffff', 0.6)];
+    const n = P.night;
+    SRAMPS.silver = [mix(n[7], SKY, 0.3), n[8], n[10], n[11], n[12], '#eef2fb', '#ffffff'];
+  }
 
   // ------------------------------------------------------------------
   // the house silhouette, from the layout anchors: bursts must stay clear of
@@ -209,52 +221,68 @@
   // choreography; every other edition keeps the original show untouched.
   //
   //  nyc    July 4th over New York: red / white / blue, calm. Bursts live in
-  //         two sky pockets that are actually open in this chapter: low over
-  //         the skyline left of the house (under the title-safe sky) and above
-  //         the roof, clear of the turret spire and the lush summer tree. Twice
-  //         a loop, right after the anniversary heart has floated up, a
+  //         three sky pockets that are actually open in this chapter: low
+  //         over the skyline left of the house (under the title-safe sky, but
+  //         never with the spire's antenna through a near burst), above the
+  //         roof right of the chimney smoke, and a small high pocket over the
+  //         turret finial, short of the tree crown. Colours go round the
+  //         tricolour in seeded groups of three, gold about one shell in ten,
+  //         willows burn silver; Story shells carry no second coloured core
+  //         (a core inside a rim reads as a face or a letter). Twice a loop,
+  //         right after the anniversary heart has floated up, a
   //         red-white-blue triple sweeps across the sky, then a lull.
-  //  match  no show, only the goal cheer: 2-3 small green / white / gold
-  //         bursts low over the house during HD.summer.goal(t).
+  //  match  no show, only the goal cheer: 3 small green / white / gold
+  //         bursts over the house during HD.summer.goal(t).
   // ------------------------------------------------------------------
+  const SILVER_GLOW = [0.74, 0.8, 1];
   const STORY = {
     nyc: {
-      mix: { peony: 5, chrys: 1.3, ring: 1.8, willow: 1.1, crackle: 0.45 },
+      mix: { peony: 5, chrys: 1.3, ring: 1.8, willow: 0.4, crackle: 0.45 },
       rate: 0.6, // launches per second at a flurry's peak (calm, never a barrage)
       cap: 3,
       R: [13, 11], // star radius: base + depth * var (before the show scale)
+      palette: ['red', 'white', 'blue'], // dealt in seeded groups of three
+      goldEvery: 10, // gold on at most about one shell in this many
       zones: [
         // [x0, x1] holds the whole burst; [y0, y1] the burst centre band
-        { x0: 10, x1: 160, y0: 76, y1: 124, w: 0.7, rk: 0.8 }, // just over the skyline (far ones dip behind it), left of the house
-        // above the roof between the peak and the turret, or over the spire:
-        // right of the chimney-smoke column, short of the tree crown
-        { x0: 236, x1: 318, y0: 10, y1: 104, w: 0.3, rk: 0.8 },
+        { x0: 10, x1: 160, y0: 76, y1: 124, w: 0.68, rk: 0.8 }, // just over the skyline (far ones dip behind it), left of the house
+        // above the roof between the peak and the turret: right of the
+        // chimney-smoke column; no willows (their trails would sink into the roof)
+        { x0: 236, x1: 318, y0: 10, y1: 104, w: 0.2, rk: 0.8, noWillow: true },
+        // small and high over the turret finial, short of the tree crown
+        { x0: 284, x1: 320, y0: 8, y1: 34, w: 0.12, rk: 0.6, noWillow: true },
       ],
-      // the triple after each anniversary heart: zone, x, height 0..1, colour, inner colour
+      // the skyline's tall spire tower (axis x, needle tip y, extra half
+      // width): no near burst has it through its core
+      avoid: [{ x: 70, top: 71, hw: 2 }],
+      // the triple after each anniversary heart: zone, x, height 0..1, colour
       triple: [
-        [0, 34, 0.55, 'red', 'white'],
-        [0, 86, 0.12, 'white', null],
-        [0, 138, 0.45, 'blue', 'white'],
+        [0, 34, 0.55, 'red'],
+        [0, 88, 0.12, 'white'],
+        [0, 138, 0.45, 'blue'],
       ],
       tripleFallback: [66.5, 186.5],
       quiet: [6, 10], // seconds kept clear before / after the triple
       maxIdle: 14,
-      glow: { white: [0.74, 0.8, 1] }, // white shells glow silver here (the tricolour reads)
+      glow: { white: SILVER_GLOW, silver: SILVER_GLOW }, // white shells glow silver here (the tricolour reads)
       clip: { x0: 0, y0: 40, x1: HD.W - 1, y1: HD.H - 1 }, // the yard on the left catches the flashes too
     },
   };
   const GOAL = {
     match: {
-      // [launch offset in the goal window (s), type, x, y, star radius, colour, inner colour]
+      // [launch offset in the goal window (s), type, x, y, star radius, colour, opts]
       shells: [
-        // left of the roof over the skyline, high over the peak, right of the
-        // turret (clear of the chimney smoke and the tree crown)
-        [0.3, 'peony', 147, 97, 11, 'gold', null],
-        [1.05, 'peony', 244, 42, 14, 'green', 'white'],
-        [1.85, 'peony', 310, 80, 10, 'white', null],
+        // left of the roof over the skyline, high right of the peak (clear of
+        // the chimney smoke's tail), high over the turret finial (short of the
+        // tree crown). No coloured cores; the white is a slightly sagging
+        // starburst of spokes filling the ball, so it never reads as a letter O
+        [0.3, 'peony', 147, 97, 14, 'gold', { nk: 0.9 }],
+        [1.05, 'peony', 256, 38, 14, 'green', { nk: 0.85 }],
+        [1.85, 'chrys', 302, 21, 14, 'white', { nk: 0.9, fill: true, thin: true, sag: 1.25 }],
       ],
       fallback: [[150, 158]],
       lightK: 2.2, // the yard and roof catch a soft coloured flash
+      glow: { white: SILVER_GLOW },
     },
   };
 
@@ -281,8 +309,10 @@
    * Zone placement (Summer Story shows): the shell picks one of the show's sky
    * pockets (or opt.zone), takes that pocket's size, and is then placed like
    * placeShell: lifted clear of the house, out of the title-safe sky, spread
-   * away from the bursts that share the sky with it. Falls back to the other
-   * pocket, then to a smaller shell.
+   * away from the bursts that share the sky with it, and off the chapter's
+   * keep-out spires (s.avoid: a near burst never sits on one; a far one may
+   * dip behind it). Falls back to the other pockets, then to a smaller shell.
+   * Records the pocket in sh.zone (the scene light is aggregated per pocket).
    */
   function placeShellZones(sh, s, rnd, others, opt) {
     const zs = s.zones;
@@ -297,8 +327,11 @@
       }
     }
     const R0 = sh.R;
+    const avoid = s.avoid || [];
     for (let zt = 0; zt < zs.length; zt++) {
-      const z = zs[(zi + zt) % zs.length];
+      const zIdx = (zi + zt) % zs.length;
+      const z = zs[zIdx];
+      if (z.noWillow && sh.type === 'willow') continue;
       sh.R = R0 * z.rk;
       for (let tries = 0; tries < 4; tries++) {
         const Rr = sh.R;
@@ -322,6 +355,17 @@
               by = lim;
             }
             if (bx - fp[0] < SAFE.x1 + 6 && by - Rr < SAFE.y1 + 6) continue; // title-safe sky stays calm
+            // a spire through a near burst's core reads as the tower exploding:
+            // it may only cross a burst's outer edge
+            let onSpire = false;
+            for (const a of avoid) {
+              const m = 0.75 * Rr + (a.hw || 0);
+              const dx = Math.abs(bx - a.x);
+              if (dx >= m || by + fp[1] < a.top) continue;
+              if (!sh.far) onSpire = true;
+              else score += (m - dx) / 4;
+            }
+            if (onSpire) continue;
             for (const o of others) {
               const need = (Rr + o.R) * 0.95;
               const d = Math.hypot(bx - o.bx, by - o.by);
@@ -336,6 +380,7 @@
         if (best) {
           sh.bx = best[0];
           sh.by = best[1];
+          sh.zone = zIdx;
           return true;
         }
         sh.R *= 0.86;
@@ -355,7 +400,7 @@
       moon: false,
       denseTree: true,
       salvo: false,
-      glow: GLOW,
+      glow: Object.assign({}, GLOW, cfg.glow || {}),
       clip: FW_CLIP,
       lightK: cfg.lightK,
     };
@@ -363,8 +408,9 @@
     const seed = edSeed(ed.id);
     let idx = 0;
     for (const [a] of wins)
-      for (const [dt, type, x, y, Rr, col, col2] of cfg.shells) {
+      for (const [dt, type, x, y, Rr, col, o] of cfg.shells) {
         const k = idx++;
+        const op = o || {};
         s.list.push({
           type,
           t0: a + dt,
@@ -373,10 +419,14 @@
           seed: (Math.imul(seed, 131) + k * 977 + 17) | 0,
           depth: 0.5,
           far: false,
-          nk: 0.7, // fewer stars: small bursts stay crisp, not a solid blob
+          story: true,
+          nk: op.nk || 0.7, // fewer stars: small bursts stay crisp, not a solid blob
+          fill: !!op.fill, // stars fill the ball instead of crowding its rim
+          thin: !!op.thin, // no fat 2x2 heads
+          sag: op.sag || 1,
           R: Rr,
           col,
-          col2,
+          col2: null,
           tilt: 0.5,
           rot: 0,
           sway: (HD.hash(seed, k, 5) - 0.5) * 6,
@@ -610,6 +660,7 @@
       denseTree: true,
       salvo: false,
       zones: cfg.zones,
+      avoid: cfg.avoid,
       glow: Object.assign({}, GLOW, cfg.glow || {}),
       clip: cfg.clip || FW_CLIP,
       lightK: cfg.lightK || 1,
@@ -619,7 +670,6 @@
     const seed = edSeed(ed.id);
     const rnd = HD.rng(6060 ^ seed);
     const list = s.list;
-    const nc = s.colors.length;
     const cap = cfg.cap;
     const brk = (sh) => sh.t0 + sh.rise;
     const total = (sh) => sh.rise + sh.life;
@@ -640,14 +690,13 @@
       return out;
     };
     let idx = 0;
+    // colours are dealt once the show is laid out (below); no Story shell
+    // carries a second coloured core: a core inside a rim reads as a face,
+    // an eye or a letter
     const shell = (t0, type) => {
       const depth = rnd();
       const rise = 1.15 + rnd() * 0.6;
       const life = TYPE_LIFE[type] * (0.92 + 0.16 * rnd());
-      const col = type === 'willow' ? 'willow' : s.colors[Math.floor(rnd() * nc) % nc];
-      let col2 = s.colors[Math.floor(rnd() * nc) % nc];
-      if (col2 === col || rnd() < 0.4 || type === 'ring' || type === 'willow') col2 = null;
-      if (col === 'white') col2 = null; // a white ball with a coloured core reads as an eye
       return {
         type,
         t0,
@@ -656,9 +705,11 @@
         seed: (Math.imul(seed, 131) + idx++ * 977 + 17) | 0,
         depth,
         far: depth < 0.2,
+        story: true,
         R: (type === 'willow' ? cfg.R[0] + 8 + 5 * depth : cfg.R[0] + cfg.R[1] * depth) * s.size * (type === 'crackle' ? 0.8 : 1),
-        col,
-        col2,
+        col: type === 'willow' ? 'silver' : null,
+        col2: null,
+        fixed: false,
         tilt: 0.35 + 0.45 * rnd(),
         rot: (rnd() - 0.5) * 1.2,
         sway: (rnd() - 0.5) * 14,
@@ -673,7 +724,7 @@
     const tripleAt = hw ? hw.map((w) => w[1] + 0.4) : cfg.tripleFallback;
     for (const ts of tripleAt) {
       const mine = [];
-      cfg.triple.forEach(([zone, tx, ty, col, col2], k) => {
+      cfg.triple.forEach(([zone, tx, ty, col], k) => {
         const sh = shell(ts + k * 0.6, 'peony');
         sh.rise = 1.3;
         sh.life = TYPE_LIFE.peony * 1.05;
@@ -681,7 +732,7 @@
         sh.far = false;
         sh.R = (cfg.R[0] + cfg.R[1] * 0.6) * s.size;
         sh.col = col;
-        sh.col2 = col2;
+        sh.fixed = true;
         sh.sway = (k - 1) * 6;
         if (placeShellZones(sh, s, rnd, mine, { zone, tx, ty })) {
           mine.push(sh);
@@ -767,6 +818,47 @@
       if (placeShellZones(sh, s, rnd, near(sh), null)) list.push(sh);
     }
     list.sort((a, b) => a.t0 - b.t0);
+    // deal the colours in launch order: the palette goes round in seeded
+    // groups (a fresh shuffle per group, never the same colour twice in a
+    // row), and gold now and then, at most about one shell in goldEvery.
+    // Willows are already silver; the triple keeps its own colours.
+    const pal = cfg.palette || s.colors;
+    const crnd = HD.rng(seed ^ 0x2c5e);
+    let bag = [];
+    let last = null;
+    let sinceGold = 0;
+    const goldGap = (cfg.goldEvery || 10) - 2;
+    const deal = () => {
+      const g3 = pal.slice();
+      for (let i = g3.length - 1; i > 0; i--) {
+        const j = Math.floor(crnd() * (i + 1));
+        const tmp = g3[i];
+        g3[i] = g3[j];
+        g3[j] = tmp;
+      }
+      return g3;
+    };
+    for (const sh of list) {
+      if (sh.fixed || sh.col) {
+        last = sh.col === 'silver' ? 'white' : sh.col;
+        continue;
+      }
+      sinceGold++;
+      if (cfg.goldEvery && sinceGold > goldGap && crnd() < 0.34) {
+        sh.col = 'gold';
+        sinceGold = 0;
+        last = 'gold';
+        continue;
+      }
+      if (!bag.length) bag = deal();
+      let i = bag.findIndex((c) => c !== last);
+      if (i < 0) {
+        bag = bag.concat(deal());
+        i = bag.findIndex((c) => c !== last);
+      }
+      sh.col = bag.splice(i, 1)[0];
+      last = sh.col;
+    }
     return s;
   }
   // built once per edition (~10 ms), prewarmed in init() so a live edition
@@ -847,6 +939,30 @@
     }
   }
 
+  // solid pixel disc of radius r1 with a round hole of radius r0 (g.circle's
+  // pixel rule for both edges)
+  function annulus(g, cx, cy, r1, r0, c) {
+    cx = R(cx);
+    cy = R(cy);
+    const rr1 = r1 * r1 + r1 * 0.6;
+    const rr0 = r0 > 0.5 ? r0 * r0 + r0 * 0.6 : -1;
+    const iy = Math.ceil(r1);
+    for (let dy = -iy; dy <= iy; dy++) {
+      const s1 = rr1 - dy * dy;
+      if (s1 < 0) continue;
+      const h1 = Math.floor(Math.sqrt(s1));
+      const s0 = rr0 - dy * dy;
+      if (s0 < 0) {
+        g.hline(cx - h1, cx + h1, cy + dy, c);
+        continue;
+      }
+      const h0 = Math.floor(Math.sqrt(s0));
+      if (h0 >= h1) continue;
+      g.hline(cx - h1, cx - h0 - 1, cy + dy, c);
+      g.hline(cx + h0 + 1, cx + h1, cy + dy, c);
+    }
+  }
+
   // head brightness over a star's life u (0..1)
   function headLvl(u) {
     return u < 0.09 ? 6 : u < 0.3 ? 5 : u < 0.52 ? 4 : u < 0.7 ? 3 : u < 0.83 ? 2 : u < 0.93 ? 1 : 0;
@@ -888,10 +1004,12 @@
   function drawBurst(g, sh, t) {
     const tb = sh.tau - sh.rise;
     const type = sh.type;
-    const ramp = RAMPS[sh.col] || RAMPS.gold;
-    const ramp2 = sh.col2 ? RAMPS[sh.col2] : null;
+    const story = !!sh.story;
+    const RP = story ? SRAMPS : RAMPS;
+    const ramp = RP[sh.col] || RAMPS.gold;
+    const ramp2 = sh.col2 ? RP[sh.col2] : null;
     const k = DRAG[type];
-    const G = GRAV[type];
+    const G = GRAV[type] * (sh.sag || 1);
     const Rr = sh.R;
     const dim = sh.far ? 1 : 0;
     const tk = HD._fire.tick(t, 12);
@@ -901,16 +1019,29 @@
     const sr = Math.sin(sh.rot);
     const rot0 = HD.hash(sh.seed, 3, 9) * TAU;
     // no dark sky-mixed tail pixels while the burst is still a bright ball
-    const minL = tb < 0.4 ? 2 : 0;
+    // (a Story shell's spokes stay as bright as its flash while the flash is up)
+    const minL = story && tb < 0.2 ? (tb < 0.1 ? 5 : 4) - dim : tb < 0.4 ? 2 : 0;
     HN = 0;
 
     // break: a bright flash ball that swells with the stars and thins out
     // (no empty ring between the core and the fresh stars)
-    if (tb < 0.2) {
+    if (story) {
+      // Story shells: a solid ball while it swells, then it clears from the
+      // inside out into the stars (a solid band whose hole widens). No
+      // dither, no centre cross: the fading flash never shows a dark glyph,
+      // a grid or a lit pupil inside the stars
+      if (tb < 0.2) {
+        const rb = Math.max(1, expand(tb, k) * Rr * 0.8);
+        if (tb < 0.1) {
+          g.circle(cx, cy, rb, ramp[5 - dim]);
+          if (tb < 0.05) g.px(R(cx), R(cy), ramp[6 - dim]);
+        } else annulus(g, cx, cy, rb, rb * (0.5 + 5 * (tb - 0.1)), ramp[4 - dim]);
+      }
+    } else if (tb < 0.2) {
       const rb = expand(tb, k) * Rr * 0.8;
       if (rb >= 2) g.ditherCircle(cx, cy, rb, ramp[4 - dim], 1 - tb / 0.2, 0.45);
     }
-    if (tb < 0.14) {
+    if (!story && tb < 0.14) {
       const lvC = tb < 0.07 ? 6 : 5;
       const x = R(cx);
       const y = R(cy);
@@ -961,7 +1092,9 @@
           dy = ex * sr + ey * cr;
           back = Math.sin(a) < -0.2 ? 1 : 0;
         } else {
-          const z = (h2 - 0.5) * 1.1;
+          // sh.fill: z sampled over the whole sphere, so the stars fill the
+          // ball (a small white shell otherwise reads as a hollow letter O)
+          const z = sh.fill ? (2 * h2 - 1) * 0.92 : (h2 - 0.5) * 1.1;
           const rr = Math.sqrt(1 - z * z);
           dx = rr * Math.cos(a);
           dy = rr * Math.sin(a);
@@ -1017,12 +1150,13 @@
           const e0 = expand(t0, k);
           const tx = cx + dx * sp * e0;
           const ty = cy + dy * sp * e0 + droop(t0, Gj);
-          // the chrysanthemum's trail burns gold whatever the head colour
-          if (type === 'chrys') streak(g, tx, ty, hx, hy, RAMPS.willow, Math.min(5, lv), 3, minL);
+          // the chrysanthemum's trail burns gold whatever the head colour (a
+          // Story chrysanthemum's trail keeps its head colour, so it reads)
+          if (type === 'chrys') streak(g, tx, ty, hx, hy, story ? rp : RAMPS.willow, Math.min(5, lv), 3, minL);
           else if (!glit) streak(g, tx, ty, hx, hy, rp, lv, 3, minL);
         }
         if (glit) continue;
-        if (lv >= 5 && !dim && !back && type !== 'crackle' && type !== 'chrys') {
+        if (lv >= 5 && !dim && !back && type !== 'crackle' && type !== 'chrys' && !sh.thin) {
           // fresh, near stars: a fat 2x2 head, its dimmer pixels on the trailing
           // side (no perpendicular arms: the head never reads as a glyph)
           const vy = dy * sp * Math.exp(-tb / k) / k + (2 * Gj * tb) / (1 + 0.7 * tb);
@@ -1117,41 +1251,48 @@
     }
   }
 
-  // one aggregated coloured light for all bursts, clipped to the relit scene
+  // one aggregated coloured light for all bursts, clipped to the relit scene.
+  // Zoned (Summer Story) shows aggregate per sky pocket instead: one light
+  // over the skyline pocket and one for the pockets above the roof, each at
+  // its own weighted centre with its own cap, so a burst on one side never
+  // drags a single pool across the house front where no burst is.
   const FW_CLIP = { x0: 140, y0: 40, x1: HD.W - 1, y1: HD.H - 1 };
+  const AGG = [new Float64Array(6), new Float64Array(6)]; // w, x, y, r, g, b
   function fireworkLights(t, L) {
     const s = show();
     if (!s.list.length) return;
     const list = liveShells(t, s);
-    let w = 0;
-    let x = 0;
-    let y = 0;
-    let r = 0;
-    let gc = 0;
-    let b = 0;
+    const zoned = !!s.zones;
+    const LF = HD.LIGHT.firework;
+    AGG[0].fill(0);
+    AGG[1].fill(0);
     for (const sh of list) {
       const fl = lightOf(sh) * (sh.R / 24) * (s.lightK || 1);
       if (fl <= 0.01) continue;
-      const col = HD.LIGHT.firework[sh.col] || HD.LIGHT.firework.gold;
-      w += fl;
-      x += sh.bx * fl;
-      y += sh.by * fl;
-      r += col[0] * fl;
-      gc += col[1] * fl;
-      b += col[2] * fl;
+      const col = LF[sh.col === 'silver' ? 'white' : sh.col] || LF.gold;
+      const a = AGG[zoned && sh.zone > 0 ? 1 : 0];
+      a[0] += fl;
+      a[1] += sh.bx * fl;
+      a[2] += sh.by * fl;
+      a[3] += col[0] * fl;
+      a[4] += col[1] * fl;
+      a[5] += col[2] * fl;
     }
-    if (w < 0.05) return;
-    L.add({
-      x: R(x / w),
-      y: R(y / w) + 70,
-      r: 170,
-      ry: 110,
-      color: [r / w, gc / w, b / w],
-      i: Math.min(0.18, 0.12 * w),
-      bands: 4,
-      pow: 1.25,
-      clip: s.clip || FW_CLIP,
-    });
+    for (let k = 0; k < (zoned ? 2 : 1); k++) {
+      const [w, x, y, r, gc, b] = AGG[k];
+      if (w < 0.05) continue;
+      L.add({
+        x: R(x / w),
+        y: R(y / w) + 70,
+        r: 170,
+        ry: 110,
+        color: [r / w, gc / w, b / w],
+        i: Math.min(zoned ? 0.15 : 0.18, 0.12 * w),
+        bands: 4,
+        pow: 1.25,
+        clip: s.clip || FW_CLIP,
+      });
+    }
   }
 
   // ------------------------------------------------------------------

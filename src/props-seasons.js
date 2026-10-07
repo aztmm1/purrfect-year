@@ -839,7 +839,9 @@
   const SHRUB_L = { x: 321, y: 214, r: 11.5, seed: 41 }; // left, by the fence corner
   const SHRUB_M = { x: 443, y: 216, r: 10, seed: 42 }; // right of the trunk
   const SHRUB_R = { x: 465, y: 219, r: 8.5, seed: 43 }; // at the foot of the birdhouse post
+  const SHRUB_B = { x: 377, y: 221, r: 7, seed: 44 }; // a low one where the garden bench stands
   function shrubsFor(ed) {
+    if (ed.tagSet.has('anniversary-bench')) return [SHRUB_L, SHRUB_B, SHRUB_M, SHRUB_R]; // the couple's bench is on the stage
     if (ed.tagSet.has('sled')) return [SHRUB_M, SHRUB_R]; // the sled + snowman fill the left
     if (ed.tagSet.has('scarecrow')) return [SHRUB_R]; // hay on the left, scarecrow mid-right
     if (ed.tagSet.has('hammock')) return [SHRUB_L, SHRUB_R]; // nothing under the hammock
@@ -1794,8 +1796,12 @@
         for (let y = 0; y < FLAG.h; y++)
           for (let x = 0; x < FLAG.w; x++) {
             let c = y % 2 === 0 ? red[s] : wht[s];
-            // canton: 7 stripes deep, 2/5 of the fly; stars as a fine lattice
-            if (x < 10 && y < 7) c = y >= 1 && y <= 5 && x >= 1 && x <= 8 && (x + y) % 2 === 0 ? star[s] : blu[s];
+            // canton: 7 stripes deep, 2/5 of the fly; stars as a sparse staggered
+            // lattice (every 2nd column on rows 1, 3, 5; the middle row offset)
+            if (x < 10 && y < 7) {
+              const st = ((y === 1 || y === 5) && x >= 2 && x <= 8 && x % 2 === 0) || (y === 3 && x >= 3 && x <= 7 && x % 2 === 1);
+              c = st ? star[s] : blu[s];
+            }
             g.px(x, y, c);
           }
       })
@@ -1833,15 +1839,19 @@
     blit(g, lazy('flagPole', bakeFlagPole));
     if (!FLAG_TEX) FLAG_TEX = bakeFlagTex();
     g.em.px(FP.x + 6, FP.base - 2, P.amber[7]); // spotlight lens
-    // continuous time: the cloth's rounding steps already give it a pixel cadence
-    const b = breeze01(t);
-    const amp = 0.6 + 1.3 * b;
-    const ph = T.phase(t, 1.3);
+    // a calm night flag: 6 fps, one slow ripple (~3.6 s) of at most 1px that
+    // only moves the fly half; in a light breeze it just hangs with a droop
+    const ts = T.step(t, 6);
+    const b = breeze01(ts);
+    const amp = clamp((b - 0.3) / 0.4, 0, 1);
+    const ph = T.phase(ts, 3.6);
     for (let x = 0; x < FLAG.w; x++) {
       const u = x / (FLAG.w - 1);
-      const a = Math.PI * 2 * (u * 1.4 - ph);
-      const k = Math.pow(u, 0.75);
-      const dy = amp * k * Math.sin(a) + (1 - b) * 1.8 * u * u;
+      const a = Math.PI * 2 * (u * 1.1 - ph);
+      const kf = clamp((u - 0.45) / 0.55, 0, 1);
+      const k = kf * kf * (3 - 2 * kf);
+      const dr = Math.max(0, u - 0.35) / 0.65;
+      const dy = amp * k * Math.sin(a) + (1 - b) * 1.6 * dr * dr;
       const slope = Math.cos(a) * k * amp;
       const s = slope > 0.55 ? 0 : slope < -0.55 ? 2 : 1;
       // the fly end frays a little shorter when the folds pull it in
@@ -1855,51 +1865,30 @@
   }
 
   // ---- the football (match) -------------------------------------------
-  // a classic black-and-white ball: the pentagons come from a real
-  // icosahedron projected onto a 7px disc, lit from the porch side
+  // a classic black-and-white ball on a 7px disc, hand-placed: a small plus-
+  // shaped pentagon facing us and three half-pentagons on the rim, so it reads
+  // as panels rather than one dark pupil. No light reaches it, so the whites
+  // stop at bone[3] (bone[4] only on the one top-left highlight pixel).
+  const BALL_ROWS = [
+    '.WWWwp.',
+    'WHWWwws',
+    'WWWpwws',
+    'WWppwws',
+    'pwwwwsq',
+    'swwssso',
+    '.ospoo.',
+  ];
   function bakeFootball() {
     const f = SU.football;
     const B = new K.Buf(f.x - 6, f.base - 9, 13, 11);
     const cx = f.x;
     const cy = f.base - 4;
-    const r = 3.4;
-    const ph = (1 + Math.sqrt(5)) / 2;
-    const V = [];
-    for (const s1 of [-1, 1]) for (const s2 of [-1, 1]) V.push([0, s1, s2 * ph], [s1, s2 * ph, 0], [s2 * ph, 0, s1]);
-    // turn one pentagon to face us (a little up and right of centre), so a
-    // ring of half-pentagons sits on the rim: the classic ball read
-    const rot = (v) => {
-      let [x, y, z] = v;
-      const th = Math.atan2(1, ph) + 0.22;
-      const y1 = y * Math.cos(th) - z * Math.sin(th);
-      const z1 = y * Math.sin(th) + z * Math.cos(th);
-      const b = -0.2;
-      const x2 = x * Math.cos(b) + z1 * Math.sin(b);
-      const z2 = -x * Math.sin(b) + z1 * Math.cos(b);
-      const n = Math.hypot(x2, y1, z2);
-      return [x2 / n, y1 / n, z2 / n];
-    };
-    const VR = V.map(rot);
-    const W = [P.bone[0], P.bone[1], P.bone[2], P.bone[3], P.bone[4]];
+    const map = { H: P.bone[4], W: P.bone[3], w: P.bone[2], s: P.bone[1], o: P.bone[0], p: P.night[1], q: P.night[0] };
     // contact shadow
     for (let x = cx - 3; x <= cx + 4; x++) B.set(x, f.base, Math.abs(x - cx - 0.5) < 2.5 ? P.night[1] : P.leaf[1]);
-    for (let y = cy - 4; y <= cy + 4; y++)
-      for (let x = cx - 4; x <= cx + 4; x++) {
-        const dx = (x - cx) / r;
-        const dy = (y - cy) / r;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > 1) continue;
-        const nz = Math.sqrt(1 - d2);
-        const lit = dx * -0.45 + dy * -0.6 + nz * 0.66; // the porch light is up and to the right... the house is left of the ball
-        let i = lit > 0.78 ? 4 : lit > 0.5 ? 3 : lit > 0.2 ? 2 : lit > -0.1 ? 1 : 0;
-        const n = [dx, dy, nz];
-        let patch = false;
-        for (const v of VR) if (v[2] > -0.2 && n[0] * v[0] + n[1] * v[1] + n[2] * v[2] > 0.94) patch = true;
-        let c = W[i];
-        if (patch) c = i >= 3 ? P.night[3] : P.night[1];
-        if (d2 > 0.72 && dy > 0.2) c = patch ? P.night[0] : W[Math.max(0, i - 1)];
-        B.set(x, y, c);
-      }
+    BALL_ROWS.forEach((row, ry) => {
+      for (let rx = 0; rx < row.length; rx++) if (row[rx] !== '.') B.set(cx - 3 + rx, cy - 3 + ry, map[row[rx]]);
+    });
     return B.bake();
   }
 
@@ -1957,56 +1946,79 @@
     // ground shadow under the bench
     for (let x = x0 - 1; x <= x1 + 2; x++) if (HD.bayer(x, NB.base + 1) < 0.65) B.set(x, NB.base + 1, P.night[1]);
 
-    // the pizza box, open on the grass in front: the plain lid stands open
-    // behind the tray (inside face in shade), the square pie fills the tray
+    // the pizza box, open on the grass in front of the bench. Seen from the
+    // front and a little above, the open lid is a TALL pale cardboard panel
+    // standing up behind a short, foreshortened tray: lid face (6 rows) over a
+    // soft hinge shadow, then the pie (crust along the far edge, cheese and
+    // pepperoni in front) and the box's white front wall. No wood-brown.
     const bx0 = NB.x - 7;
     const bx1 = NB.x + 6;
-    const ly = NB.base + 1;
-    const CB = [mix(P.wood[2], P.gold[0], 0.3), mix(P.wood[4], P.gold[1], 0.35), mix(P.wood[6], P.gold[2], 0.35), mix(P.bone[2], P.gold[3], 0.3)];
-    for (let x = bx0 + 1; x <= bx1 - 1; x++) B.set(x, ly, CB[2]);
+    const LID = {
+      edge: mix(P.bone[1], P.wood[3], 0.45), // the lid's top edge, a touch darker
+      lo: mix(P.bone[1], P.wood[4], 0.4), // near the hinge, in the tray's shadow
+      face: mix(P.bone[2], P.wood[5], 0.4), // pale kraft inside face
+      hi: mix(P.bone[3], P.wood[6], 0.35), // the moonlit right side of the panel
+      hinge: mix(P.wood[2], P.night[2], 0.4),
+      wall: mix(P.bone[2], P.night[6], 0.25), // white cardboard outside face
+      wallD: mix(P.bone[1], P.night[5], 0.3),
+    };
+    const lt = NB.base - 2; // lid top edge (y 225)
+    const hy = lt + 7; // hinge row (y 232)
     for (let x = bx0; x <= bx1; x++) {
-      B.set(x, ly + 1, x === bx1 ? CB[2] : CB[1]);
-      B.set(x, ly + 2, x === bx1 ? CB[2] : CB[1]);
-    }
-    B.set(bx0 + 3, ly + 1, CB[0]); // a little grease spot
-    const PZ = { crust: mix(P.pumpkin[4], P.gold[3], 0.5), crustL: mix(P.gold[4], P.bone[3], 0.35), cheese: mix(P.gold[4], P.pumpkin[5], 0.35), melt: mix(P.gold[5], P.bone[3], 0.3), pep: P.red[4], pepD: P.red[2] };
-    const ty = ly + 3;
-    for (let x = bx0; x <= bx1; x++) B.set(x, ty, CB[0]); // hinge crease
-    for (let y = ty + 1; y <= ty + 4; y++)
-      for (let x = bx0; x <= bx1; x++) {
-        let c = PZ.cheese;
-        if (x === bx0) c = CB[1];
-        else if (x === bx1) c = CB[3];
-        else if (y === ty + 1 || x === bx0 + 1) c = PZ.crust;
-        else if (y === ty + 4 || x === bx1 - 1) c = PZ.crustL;
-        else if ((x * 3 + y * 5) % 7 === 0) c = PZ.melt;
+      B.set(x, lt, x === bx0 ? LID.lo : LID.edge);
+      for (let y = lt + 1; y < hy; y++) {
+        let c = x > bx1 - 4 ? LID.hi : LID.face;
+        if (x === bx0) c = LID.lo;
+        else if (x === bx1) c = LID.hi;
+        else if (y === lt + 1 || x === bx0 + 1) c = LID.lo; // the lid's own shallow rim, seen from inside
+        if (y === hy - 1 && x < bx1) c = LID.lo; // the tray shades the lid's foot
         B.set(x, y, c);
       }
-    // pepperoni: one per square slice (2 rows of 4)
+      B.set(x, hy, LID.hinge);
+    }
+    B.set(bx0 + 4, lt + 3, LID.lo); // a little grease spot on the lid
+    B.set(bx0 + 5, lt + 3, LID.lo);
+    B.set(bx0 + 4, lt + 4, LID.lo);
+    const PZ = { crust: mix(P.pumpkin[3], P.gold[2], 0.45), cheese: mix(P.gold[2], P.bone[2], 0.35), melt: mix(P.gold[3], P.bone[3], 0.4), pep: P.red[3], pepD: P.red[2] };
+    const ty = hy + 1; // tray: 3 rows (y 233..235)
+    for (let y = ty; y <= ty + 2; y++)
+      for (let x = bx0; x <= bx1; x++) {
+        let c = y === ty ? PZ.crust : (x * 3 + y * 5) % 7 === 0 ? PZ.melt : PZ.cheese;
+        if (x === bx0) c = LID.wallD;
+        else if (x === bx1) c = LID.wall;
+        else if (x === bx0 + 1 && y > ty) c = PZ.crust;
+        B.set(x, y, c);
+      }
+    // pepperoni: a staggered row of slices in the cheese
     for (let k = 0; k < 4; k++) {
-      B.set(bx0 + 3 + k * 3, ty + 2, PZ.pep);
-      B.set(bx0 + 2 + k * 3, ty + 3, k % 2 ? PZ.pepD : PZ.pep);
+      B.set(bx0 + 3 + k * 3, ty + 1, k % 2 ? PZ.pepD : PZ.pep);
+      if (k < 3) B.set(bx0 + 4 + k * 3, ty + 2, PZ.pep);
     }
     for (let x = bx0; x <= bx1; x++) {
-      B.set(x, ty + 5, x === bx1 ? CB[2] : CB[1]);
-      if (HD.bayer(x, ty + 6) < 0.6) B.set(x, ty + 6, P.night[1]);
+      B.set(x, ty + 3, x > bx1 - 3 ? LID.wall : LID.wallD); // box front wall
+      if (HD.bayer(x, ty + 4) < 0.6) B.set(x, ty + 4, P.night[1]);
     }
-    // two lemonades: tall glasses with a lemon slice and a striped straw
+    // two lemonades: 3px glasses with a pale rim and a highlight column, pale
+    // lemon inside, a lemon wheel hooked over the rim and a straw leaning out
+    const LM = { rim: P.ice[4], hi: P.ice[5], lem: mix(P.gold[2], P.bone[2], 0.45), lemD: mix(P.gold[1], P.bone[1], 0.4), base: P.ice[2], wheel: mix(P.gold[4], P.bone[3], 0.3), wheelD: P.gold[2], straw: P.red[4], strawW: P.bone[3] };
     const glass = (gx, gy, flip) => {
-      const LM = [mix(P.gold[2], P.bone[1], 0.35), mix(P.gold[4], P.bone[3], 0.4), mix(P.gold[5], P.bone[4], 0.5)];
-      for (let y = gy - 4; y <= gy; y++) {
-        B.set(gx, y, y === gy - 4 ? LM[2] : LM[1]);
-        B.set(gx + 1, y, y === gy - 4 ? LM[2] : y === gy ? LM[0] : LM[1]);
+      const out = flip ? -1 : 1; // the side the straw leans to
+      const hiX = gx + 2; // the highlight column on the moonlit side
+      for (let x = gx; x <= gx + 2; x++) {
+        B.set(x, gy - 4, LM.rim);
+        for (let y = gy - 3; y <= gy - 1; y++) B.set(x, y, x === hiX ? LM.hi : x === gx + 1 ? LM.lem : LM.lemD);
+        B.set(x, gy, LM.base);
+        B.set(x, gy + 1, P.night[1]);
       }
-      B.set(gx + (flip ? -1 : 2), gy - 4, P.gold[4]); // lemon slice on the rim
-      B.set(gx + (flip ? -1 : 2), gy - 3, P.gold[3]);
-      B.set(gx + (flip ? 0 : 1), gy - 5, P.bone[3]); // straw
-      B.set(gx + (flip ? 0 : 1), gy - 6, P.red[4]);
-      B.set(gx + (flip ? -1 : 2), gy - 7, P.bone[3]);
-      B.set(gx, gy + 1, P.night[1]);
-      B.set(gx + 1, gy + 1, P.night[1]);
+      // lemon wheel hooked over the rim on the inner side
+      const wx = flip ? gx + 2 : gx;
+      B.set(wx, gy - 5, LM.wheel);
+      B.set(wx - out, gy - 4, LM.wheelD);
+      // straw: from the middle of the glass, leaning out on a diagonal
+      B.set(gx + 1 + out, gy - 5, LM.straw);
+      B.set(gx + 1 + out * 2, gy - 6, LM.strawW);
     };
-    glass(bx0 - 4, NB.base + 8, true);
+    glass(bx0 - 5, NB.base + 8, true);
     glass(bx1 + 3, NB.base + 8, false);
 
     // shepherd's hook for the heart lantern
@@ -2022,41 +2034,76 @@
     return B.bake();
   }
   const HEART_ROWS = ['.aa.aa.', 'abbabba', 'abccbba', 'abbbbba', '.abbba.', '..aba..', '...a...'];
-  const HEART_LEN = 3;
+  // lit paper pink from the palette ramps; the flicker steps each one up a notch
+  const HEART_COL = {
+    a: [P.red[4], P.red[5]],
+    b: [mix(P.blossom[5], P.red[5], 0.35), mix(P.blossom[6], P.red[6], 0.3)],
+    c: [P.blossom[6], P.blossom[7]],
+  };
+  // a 5px cord swings the lantern by +-1px in the breeze, at a 6 fps cadence
+  const HEART_LEN = 5;
   const heartHook = () => [HOOK.x - 6, HOOK.top + 1];
+  function heartPos(t) {
+    const ts = T.step(t, 6);
+    const [hx, hy] = heartHook();
+    return FX.lanternPos(hx, hy, ts, 31, { len: HEART_LEN, amp: 0.16 + 0.12 * breeze01(ts) });
+  }
   function drawHeartLantern(g, t) {
     const [hx, hy] = heartHook();
-    const [bx, by] = FX.lanternPos(hx, hy, t, 31, { len: HEART_LEN, amp: 0.05 + 0.08 * breeze01(t) });
+    const [bx, by] = heartPos(t);
     g.line(hx, hy, bx, by, P.night[2]);
     const f = T.flicker(T.step(t, 8), 77, 0.8);
-    const hi = f > 0.55;
-    const col = { a: mix(P.red[3], P.blossom[3], 0.4), b: hi ? '#ff7f96' : '#f0647e', c: hi ? '#ffd2da' : '#ffb2c0' };
+    const hi = f > 0.55 ? 1 : 0;
     g.px(bx, by + 1, P.night[2]); // little cap
     HEART_ROWS.forEach((row, dy) => {
       for (let dx = 0; dx < row.length; dx++) {
         const ch = row[dx];
         if (ch === '.') continue;
-        g.em.px(bx - 3 + dx, by + 2 + dy, col[ch]);
+        g.em.px(bx - 3 + dx, by + 2 + dy, HEART_COL[ch][hi]);
       }
     });
     g.px(bx, by + 2 + HEART_ROWS.length, P.red[2]); // tassel
   }
   function heartLight(t, Lt) {
-    const [hx, hy] = heartHook();
-    const [bx, by] = FX.lanternPos(hx, hy, t, 31, { len: HEART_LEN, amp: 0.05 + 0.08 * breeze01(t) });
+    const [bx, by] = heartPos(t);
     const f = T.flicker(T.step(t, 8), 77, 0.8);
-    Lt.add({ x: bx - 4, y: by + 10, r: 36, ry: 26, color: [1.0, 0.56, 0.5], i: 0.55 * (0.9 + 0.2 * f), bands: 5, halo: { x: bx, y: by + 5, r: 9, a: 0.16 } });
+    // a pink pool over the couple that reaches down to the picnic on the grass
+    Lt.add({ x: bx - 5, y: by + 13, r: 38, ry: 30, color: [1.0, 0.56, 0.5], i: 0.55 * (0.9 + 0.2 * f), bands: 5, halo: { x: bx, y: by + 5, r: 9, a: 0.16 } });
   }
 
   // ---- LA: plaza string lights + a glass-tube patio heater -------------
-  // two festoons of warm bulbs with paper lanterns, from hooks on the house
-  // wall and the porch to a timber post at the left of the yard
-  const PL_POST = { x: 52, base: 229, top: 166 };
+  // two festoons of warm bulbs with paper lanterns, from a timber post at the
+  // left of the yard to hooks on the house's wall corner and porch post. They
+  // sag low across the dark wall band behind the stage (lowest bulbs ~y190 /
+  // ~y198), not over the skyline, and each bulb is a white-hot core with a
+  // soft bloom so it never reads as one of the city's orange window dots.
+  // Wires, sockets and the steady bulbs are baked once; a frame only blits
+  // them and adds a few breathing bulbs and the lanterns.
+  const PL_POST = { x: 52, base: 229, top: 180 };
   const PL_STRANDS = [
-    { pts: [[PL_POST.x + 1, PL_POST.top + 1], [165, 147]], sag: 9, lan: [0.3, 0.62], seed: 1 },
-    { pts: [[PL_POST.x + 1, PL_POST.top + 5], [201, 168]], sag: 13, lan: [0.18, 0.46, 0.76], seed: 2 },
+    { pts: [[PL_POST.x + 2, PL_POST.top + 2], [166, 175]], sag: 13, lan: [0.3, 0.64], seed: 1 },
+    { pts: [[PL_POST.x + 2, PL_POST.top + 6], [166, 186]], sag: 12, lan: [0.2, 0.47, 0.75], seed: 2 },
   ];
-  const PL_COLS = ['gold', 'gold', 'white', 'gold'];
+  const PL_COLS = ['gold', 'white', 'gold', 'gold', 'white'];
+  const PL_SPACING = 6;
+  // the same catenary FX.bulbs / FX.bulbLights sample (so lights land on bulbs)
+  function plazaPath(s) {
+    const [x0, y0] = s.pts[0];
+    const [x1, y1] = s.pts[1];
+    const len = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
+    const steps = Math.ceil(len * 2);
+    const sg = s.sag * Math.min(1, len / 40);
+    const out = [];
+    let last = null;
+    for (let k = 0; k <= steps; k++) {
+      const u = k / steps;
+      const x = R(x0 + (x1 - x0) * u);
+      const y = R(y0 + (y1 - y0) * u + 4 * sg * u * (1 - u));
+      if (last && last[0] === x && last[1] === y) continue;
+      out.push((last = [x, y]));
+    }
+    return out;
+  }
   const strandAt = (s, u) => {
     const [x0, y0] = s.pts[0];
     const [x1, y1] = s.pts[1];
@@ -2064,53 +2111,102 @@
     const sg = s.sag * Math.min(1, len / 40);
     return [R(x0 + (x1 - x0) * u), R(y0 + (y1 - y0) * u + 4 * sg * u * (1 - u))];
   };
-  function bakePlazaPost() {
+  const PL_BULB = {
+    gold: { core: P.bulb.gold[2], glass: P.amber[6], dim: P.amber[5], bloom: P.amber[2] },
+    white: { core: P.bulb.white[2], glass: mix(P.bulb.white[1], P.amber[7], 0.4), dim: P.amber[7], bloom: mix(P.amber[2], P.bulb.white[0], 0.4) },
+  };
+  let PL_ART = null;
+  function plazaArt() {
+    if (PL_ART) return PL_ART;
     const p = PL_POST;
-    const B = new K.Buf(p.x - 6, p.top - 4, 14, p.base - p.top + 7);
+    // post, wires, sockets, hooks (relit scene pixels)
+    const B = new K.Buf(p.x - 12, p.top - 6, 210 - p.x + 12, p.base - p.top + 10);
     for (let y = p.top; y <= p.base; y++) {
-      B.set(p.x, y, P.wood[3]);
-      B.set(p.x + 1, y, y % 9 === 4 ? P.wood[4] : P.wood[6]);
+      B.set(p.x - 1, y, P.wood[2]);
+      B.set(p.x, y, y % 9 === 4 ? P.wood[3] : P.wood[4]);
+      B.set(p.x + 1, y, y < p.top + 30 ? P.wood[7] : P.wood[6]); // moonlit edge
     }
-    B.set(p.x, p.top - 1, P.wood[5]);
-    B.set(p.x + 1, p.top - 1, P.wood[7]);
-    // a little cap and two eye-hooks
-    for (const [dx, dy, c] of [[-1, -2, P.stone[3]], [0, -2, P.stone[4]], [1, -2, P.stone[5]], [2, -2, P.stone[4]], [2, 1, P.stone[4]], [2, 5, P.stone[4]]]) B.set(p.x + dx, p.top + dy, c);
-    // a guy wire to a peg (the strands pull it towards the house)
-    for (let k = 0; k <= 14; k++) B.set(R(p.x - 1 - k * 0.55), R(p.top + 3 + k * 4.2), P.night[2]);
-    B.set(p.x - 9, p.base + 1, P.wood[4]);
-    for (let x = p.x - 2; x <= p.x + 3; x++) if (HD.bayer(x, p.base + 1) < 0.7) B.set(x, p.base + 1, P.night[1]);
-    // the hooks on the house wall / porch
+    // an iron cap with a lit rim and a finial, two eye-hooks for the strands
+    for (let dx = -2; dx <= 2; dx++) {
+      B.set(p.x + dx, p.top - 1, dx >= 1 ? P.stone[6] : P.stone[4]);
+      B.set(p.x + dx, p.top - 2, dx === 2 ? P.stone[7] : dx >= 0 ? P.stone[5] : P.stone[3]);
+    }
+    B.set(p.x, p.top - 3, P.stone[5]);
+    B.set(p.x + 1, p.top - 3, P.stone[7]);
+    B.set(p.x, p.top - 4, P.stone[6]);
+    for (const s of PL_STRANDS) {
+      const [hx, hy] = s.pts[0];
+      B.set(hx, hy, P.stone[6]);
+      B.set(hx, hy - 1, P.stone[4]);
+    }
+    // a guy wire to a peg on the far side (the strands pull towards the house)
+    for (const [x, y] of K.bres(p.x - 2, p.top + 3, p.x - 10, p.base)) if (HD.bayer(x, y) < 0.8) B.set(x, y, P.stone[3]);
+    B.set(p.x - 10, p.base + 1, P.wood[5]);
+    B.set(p.x - 11, p.base + 1, P.wood[3]);
+    for (let x = p.x - 3; x <= p.x + 3; x++) if (HD.bayer(x, p.base + 1) < 0.7) B.set(x, p.base + 1, P.night[1]);
+    // the hooks on the house wall corner and the porch post
     for (const s of PL_STRANDS) {
       const [hx, hy] = s.pts[1];
-      B.set(hx, hy, P.stone[4]);
-      B.set(hx + 1, hy, P.stone[3]);
+      B.set(hx, hy, P.stone[6]);
+      B.set(hx + 1, hy, P.stone[4]);
+      B.set(hx, hy - 1, P.stone[4]);
     }
-    return B.bake();
+    // wires and bulb sockets; the emissive bulbs go to their own sprite
+    const E = new K.Buf(0, 140, 220, 80);
+    const bulbs = [];
+    PL_STRANDS.forEach((s, si) => {
+      const path = plazaPath(s);
+      for (let i = 0; i < path.length; i++) {
+        const [x, y] = path[i];
+        B.set(x, y, P.night[2]);
+        if (i % PL_SPACING !== 0 || i === 0 || i === path.length - 1) continue;
+        const k = (i / PL_SPACING) | 0;
+        const C = PL_BULB[PL_COLS[(k + si * 2) % PL_COLS.length]];
+        B.set(x, y + 1, P.stone[3]); // socket
+        E.set(x, y + 2, C.core);
+        E.set(x, y + 3, C.glass);
+        E.set(x - 1, y + 2, C.bloom);
+        E.set(x + 1, y + 2, C.bloom);
+        bulbs.push({ x, y, C, k: si * 100 + k });
+      }
+    });
+    PL_ART = { base: B.bake(), bulbs: E.bake(), list: bulbs.filter((b, i) => i % 3 === 1) };
+    return PL_ART;
   }
+  // the paper lanterns swing +-1px on a 4px cord, at a 6 fps cadence
+  const plazaLanternOpts = (ts, i) => ({ len: 4, size: i % 2 ? 'small' : 'big', amp: 0.16 + 0.12 * breeze01(ts) });
   function drawPlazaLights(g, t) {
-    blit(g, lazy('plazaPost', bakePlazaPost));
+    const A = plazaArt();
+    blit(g, A.base);
+    g.em.sprite(A.bulbs.cv, A.bulbs.x, A.bulbs.y);
+    // a third of the bulbs breathe slowly between full and a softer glow
+    const ts = T.step(t, 6);
+    for (const b of A.list) if (T.noise(ts, 3.4, 4100 + b.k) < 0.3) g.em.px(b.x, b.y + 2, b.C.dim);
     for (const s of PL_STRANDS) {
-      FX.bulbs(g, s.pts, t, { colors: PL_COLS, spacing: 6, sag: s.sag, wire: P.night[1], twinkle: 0.25, seed: 40 + s.seed });
       s.lan.forEach((u, i) => {
         const [x, y] = strandAt(s, u);
-        FX.lantern(g, x, y + 1, t, 60 + s.seed * 7 + i, 'paper', { len: 2, size: i % 2 ? 'small' : 'big', amp: 0.06 + 0.06 * breeze01(t) });
+        FX.lantern(g, x, y + 1, ts, 60 + s.seed * 7 + i, 'paper', plazaLanternOpts(ts, i));
       });
     }
   }
   function plazaLights(t, Lt) {
+    const ts = T.step(t, 6);
     for (const s of PL_STRANDS) {
-      FX.bulbLights(Lt, s.pts, t, { colors: ['gold'], sag: s.sag, every: 34, r: 26, i: 0.13 });
+      FX.bulbLights(Lt, s.pts, t, { colors: ['gold'], sag: s.sag, every: 34, r: 24, i: 0.12 });
       s.lan.forEach((u, i) => {
         const [x, y] = strandAt(s, u);
-        FX.lanternLight(Lt, x, y + 1, t, 60 + s.seed * 7 + i, 'paper', { len: 2, size: i % 2 ? 'small' : 'big', amp: 0.06 + 0.06 * breeze01(t), i: i % 2 ? 0.16 : 0.26, r: i % 2 ? 16 : 24 });
+        FX.lanternLight(Lt, x, y + 1, ts, 60 + s.seed * 7 + i, 'paper', { ...plazaLanternOpts(ts, i), i: i % 2 ? 0.16 : 0.26, r: i % 2 ? 16 : 24 });
       });
     }
+    // the festoon's glow pooled over the stage, so the family sits in it
+    Lt.add({ x: 98, y: 206, r: 32, ry: 22, color: HD.LIGHT.paperLantern, i: 0.15, bands: 4 });
+    Lt.add({ x: 142, y: 205, r: 30, ry: 22, color: HD.LIGHT.paperLantern, i: 0.14, bands: 4 });
   }
   const HT = SU.heater;
   function bakeHeater() {
     const x = HT.x;
     const b = HT.base;
-    const B = new K.Buf(x - 7, b - 34, 15, 37);
+    const B = new K.Buf(x - 8, b - 36, 17, 39);
     const ST = [P.night[1], P.stone[2], P.stone[4], P.stone[5], P.stone[6], P.stone[7]];
     // base housing: a tapered box, lit on the right
     for (let y = b - 8; y <= b; y++) {
@@ -2125,40 +2221,53 @@
       B.set(x - 2, y, ST[1]);
       B.set(x + 2, y, ST[3]);
     }
-    // pyramid cap
-    for (let k = 0; k < 4; k++) for (let dx = -k - 1; dx <= k + 1; dx++) B.set(x + dx, b - 30 + k, dx > k - 1 ? ST[5] : k === 3 ? ST[2] : ST[3]);
-    B.set(x, b - 31, ST[4]);
-    for (let dx = -3; dx <= 3; dx++) B.set(x + dx, b - 26, ST[1]); // cap underside
+    // the reflector hood: a wide shallow dish (13px) with a lit rim, its
+    // underside a mid-tone the flame below warms up, and a little finial
+    for (let dx = -1; dx <= 1; dx++) B.set(x + dx, b - 33, dx === 1 ? ST[5] : ST[3]);
+    B.set(x, b - 34, ST[4]);
+    for (let dx = -3; dx <= 3; dx++) B.set(x + dx, b - 32, dx >= 2 ? ST[5] : dx >= 0 ? ST[4] : ST[2]);
+    for (let dx = -5; dx <= 5; dx++) B.set(x + dx, b - 31, dx >= 3 ? ST[5] : dx >= 0 ? ST[4] : dx >= -3 ? ST[3] : ST[2]);
+    for (let dx = -6; dx <= 6; dx++) B.set(x + dx, b - 30, dx >= 2 ? ST[5] : dx >= -2 ? ST[4] : ST[3]); // the rim
+    B.set(x + 6, b - 30, ST[5]);
+    for (let dx = -6; dx <= 6; dx++) B.set(x + dx, b - 29, Math.abs(dx) === 6 ? ST[1] : ST[2]); // underside
+    for (let dx = -4; dx <= 4; dx++) B.set(x + dx, b - 28, Math.abs(dx) >= 3 ? ST[1] : ST[2]);
+    for (let y = b - 27; y <= b - 26; y++) for (let dx = -2; dx <= 2; dx++) B.set(x + dx, y, Math.abs(dx) === 2 ? ST[1] : ST[2]); // tube top
     // shadow
     for (let dx = -5; dx <= 6; dx++) if (HD.bayer(x + dx, b + 1) < 0.7) B.set(x + dx, b + 1, P.night[1]);
     return B.bake();
   }
+  // the flame column inside the glass: a steady core, steady amber glass, and
+  // one brighter band drifting slowly up the tube (7 fps, ~3.5 s per climb)
   function drawHeater(g, t) {
     blit(g, lazy('heater', bakeHeater));
     const x = HT.x;
     const b = HT.base;
-    const ts = T.step(t, 10);
-    // the flame dances up the glass tube in a slow helix
-    const ph = T.phase(ts, 1.1);
-    for (let y = b - 25; y <= b - 10; y++) {
-      const v = (b - 10 - y) / 15; // 0 bottom .. 1 top
-      const wob = Math.sin((v * 2.2 - ph) * Math.PI * 2);
-      const n = T.noise(ts, 0.5, 900 + y);
-      const xx = x + (wob > 0.55 ? 1 : wob < -0.55 ? -1 : 0);
-      const lvl = Math.max(3, Math.min(9, R(8 - v * 3 + (n - 0.5) * 3)));
-      g.em.px(xx, y, P.fire[lvl]);
-      if (Math.abs(wob) < 0.55 && n > 0.45) g.em.px(xx + (wob > 0 ? 1 : -1), y, P.fire[Math.max(3, lvl - 3)]);
-      g.em.px(x + (xx === x ? (wob > 0 ? -1 : 1) : 0), y, xx === x ? P.fire[2] : P.fire[3]); // glass glow
+    const ts = T.step(t, 7);
+    const y0 = b - 25;
+    const y1 = b - 10;
+    const band = y1 - T.phase(ts, 3.5) * (y1 - y0 + 4) + 2; // rises from below to above the column
+    const hi = T.flicker(ts, 333, 0.7) > 0.5 ? 1 : 0;
+    g.em.rect(x - 1, y0, 1, y1 - y0 + 1, P.amber[3]); // the glass, steady
+    g.em.rect(x + 1, y0, 1, y1 - y0 + 1, P.amber[4]);
+    g.em.rect(x, y0, 1, 3, P.fire[6]); // the core: hotter low, softer at the top
+    g.em.rect(x, y0 + 3, 1, 6, P.fire[7]);
+    g.em.rect(x, y0 + 9, 1, y1 - y0 - 8, P.fire[8]);
+    for (let y = Math.ceil(band - 1); y <= Math.floor(band + 1); y++) {
+      if (y < y0 || y > y1) continue;
+      const mid = Math.abs(y - band) < 0.5;
+      g.em.px(x, y, P.fire[mid ? 9 + hi : 9]);
+      g.em.px(x - 1, y, mid ? P.amber[5] : P.amber[4]);
+      g.em.px(x + 1, y, mid ? P.amber[6] : P.amber[5]);
     }
     g.em.hline(x - 1, x + 1, b - 9, P.fire[4]);
   }
   function heaterLight(t, Lt) {
-    const f = T.flicker(T.step(t, 10), 333, 0.7);
+    const f = T.flicker(T.step(t, 7), 333, 0.7);
     Lt.add({ x: HT.x, y: HT.base - 16, r: 44, ry: 34, color: HD.LIGHT.fire, i: 0.42 * (0.88 + 0.22 * f), bands: 5, halo: { r: 12, a: 0.14 } });
   }
 
   // ---- San Diego: giraffes, a toy-brick castle, a brick cat, a boat ------
-  const GC = {
+  const GC_NEAR = {
     coat: mix(P.gold[3], P.bone[2], 0.35),
     coatD: mix(P.gold[2], P.wood[5], 0.45),
     patch: mix(P.pumpkin[3], P.wood[5], 0.4),
@@ -2169,6 +2278,9 @@
     tip: P.wood[1],
     rim: mix(P.gold[4], P.bone[3], 0.5),
   };
+  // the far giraffe sits a step deeper in the dusk (towards P.night)
+  const GC_FAR = {};
+  for (const k in GC_NEAR) GC_FAR[k] = k === 'eye' ? GC_NEAR[k] : mix(GC_NEAR[k], P.night[3], 0.3);
   // head facing right; the neck joins at the back of the jaw (bottom left)
   const GIR_HEAD = {
     idle: ['...t.t.....', '...o.o.....', 'ee.ooooo...', '.eooooEoo..', '..oooooooor', '..ooopooomm', '..oooommmm.', '..oo.......'],
@@ -2176,11 +2288,16 @@
     blink: ['...t.t.....', '...o.o.....', 'ee.ooooo...', '.eooooDoo..', '..oooooooor', '..ooopooomm', '..oooommmm.', '..oo.......'],
     ear: ['...t.t.....', 'e..o.o.....', '.e.ooooo...', '.eooooEoo..', '..oooooooor', '..ooopooomm', '..oooommmm.', '..oo.......'],
   };
-  // both peek over the fence towards the party in the yard (facing left)
+  // both peek over the fence towards the party in the yard (facing left).
+  // They stand apart, BEHIND the picket fence (top 198): only the withers
+  // and back clear the pickets, the legs show as slivers between them. The
+  // smaller one stands further back, a step darker; it is painted first.
+  // Necks keep clear of the bg sailboat's mast (x ~455, y 182-190).
   const GIRAFFES = [
-    { x: SU.giraffes.x - 11, top: 163, dir: -1, bodyTop: 189, len: 22, seed: 1 },
-    { x: SU.giraffes.x + 7, top: 173, dir: -1, bodyTop: 193, len: 18, seed: 2 },
+    { x: SU.giraffes.x + 10, top: 171, dir: -1, bodyTop: 195, len: 16, feet: 207, seed: 2, far: true },
+    { x: SU.giraffes.x - 19, top: 163, dir: -1, bodyTop: 196, len: 20, feet: 209, seed: 1, far: false },
   ];
+  const gcOf = (gf) => (gf.far ? GC_FAR : GC_NEAR);
   /** reticulated coat: irregular patches separated by pale lines (a jittered cell pattern) */
   function giraffeCoat(x, y, seed) {
     const S3 = 3.2;
@@ -2205,24 +2322,43 @@
     return d2 - d1 < 0.75 ? -1 : id;
   }
   function bakeGiraffeBody(gf) {
+    const GCc = gcOf(gf);
     const B = new K.Buf(gf.x - 6, gf.top - 2, 30, 214 - gf.top);
     const back = -gf.dir; // the body trails behind the neck
-    // body behind the fence: the back and shoulders show above the pickets
+    // body behind the fence: only the withers and the sloping back clear the
+    // pickets; the rest shows in slivers between them
     const bx = gf.x + back * (gf.len / 2 - 1);
-    const by = gf.bodyTop + 7;
-    for (let y = gf.bodyTop; y <= 212; y++)
+    const by = gf.bodyTop + 3.5;
+    const bot = gf.bodyTop + 7;
+    for (let y = gf.bodyTop; y <= bot; y++)
       for (let x = R(bx - gf.len / 2 - 1); x <= R(bx + gf.len / 2 + 1); x++) {
         // a sloping back: higher at the shoulders (neck end)
         const u = (x - bx) / (gf.len / 2);
-        const topY = gf.bodyTop + (u * back > 0 ? u * back * 3 : 0);
-        const e = u * u + ((y - by) / 8) ** 2;
+        const topY = gf.bodyTop + (u * back > 0 ? u * back * 2 : 0);
+        const e = u * u + ((y - by) / 4.2) ** 2;
         if (e > 1 || y < topY) continue;
         const cell = giraffeCoat(x, y, gf.seed);
-        let c = cell < 0 ? GC.coat : cell < 0.5 ? GC.patch : GC.patchD;
-        if (y <= topY + 0.5) c = cell < 0 ? GC.rim : GC.coat;
-        if (y > by + 2 && cell < 0) c = GC.coatD;
+        let c = cell < 0 ? GCc.coat : cell < 0.5 ? GCc.patch : GCc.patchD;
+        if (y <= topY + 0.5) c = cell < 0 ? GCc.rim : GCc.coat;
+        if (y > by + 1 && cell < 0) c = GCc.coatD;
         B.set(x, y, c);
       }
+    // legs: 1px, pale with patches, dark hooves; set in the gaps between the
+    // pickets (x = 1, 2 mod 4) so they read as standing behind the fence
+    const span = gf.len / 2;
+    const legX = [bx - span * 0.82, bx - span * 0.5, bx + span * 0.45, bx + span * 0.78].map((v) => {
+      let x = R(v);
+      while (((x % 4) + 4) % 4 !== 1 && ((x % 4) + 4) % 4 !== 2) x++;
+      return x;
+    });
+    legX.forEach((x, i) => {
+      for (let y = bot; y <= gf.feet; y++) {
+        let c = (y - bot + i) % 4 < 2 ? GCc.coat : GCc.patch;
+        if (y === bot) c = GCc.coatD;
+        if (y === gf.feet) c = GCc.tip;
+        B.set(x, y, c);
+      }
+    });
     // neck: 4px at the shoulders, 3px under the head, leaning forward
     const n0 = gf.bodyTop + 3;
     const len = n0 - (gf.top + 5);
@@ -2234,27 +2370,31 @@
       for (let j = 0; j < w; j++) {
         const x = cx - gf.dir * j; // j = 0 is the throat (front), w-1 the back
         const cell = giraffeCoat(x, y, gf.seed + 5);
-        let c = cell < 0 ? GC.coat : cell < 0.5 ? GC.patch : GC.patchD;
-        if (j === 0 && cell < 0) c = GC.coatD;
-        if (j === w - 1 && cell < 0) c = GC.rim; // moonlit nape
+        let c = cell < 0 ? GCc.coat : cell < 0.5 ? GCc.patch : GCc.patchD;
+        if (j === 0 && cell < 0) c = GCc.coatD;
+        if (j === w - 1 && cell < 0) c = GCc.rim; // moonlit nape
         B.set(x, y, c);
       }
       // mane along the back of the neck
-      if (k > 1) B.set(cx - gf.dir * w, y, k % 2 ? GC.mane : mix(GC.mane, GC.coatD, 0.5));
+      if (k > 1) B.set(cx - gf.dir * w, y, k % 2 ? GCc.mane : mix(GCc.mane, GCc.coatD, 0.5));
     }
     return B.bake();
   }
   let GIR_SPR = null;
   function giraffeHeads() {
     if (GIR_SPR) return GIR_SPR;
-    const map = { t: GC.tip, o: GC.coat, e: GC.coatD, E: GC.eye, D: GC.coatD, m: GC.muzzle, p: GC.patch, r: GC.rim };
     GIR_SPR = {};
-    for (const k in GIR_HEAD) GIR_SPR[k] = HD.sprite(GIR_HEAD[k], map);
+    for (const [key, C] of [['near', GC_NEAR], ['far', GC_FAR]]) {
+      const map = { t: C.tip, o: C.coat, e: C.coatD, E: C.eye, D: C.coatD, m: C.muzzle, p: C.patch, r: C.rim };
+      const set = (GIR_SPR[key] = {});
+      for (const k in GIR_HEAD) set[k] = HD.sprite(GIR_HEAD[k], map);
+    }
     return GIR_SPR;
   }
   function drawGiraffes(g, t) {
-    const heads = giraffeHeads();
+    const allHeads = giraffeHeads();
     GIRAFFES.forEach((gf, i) => {
+      const heads = allHeads[gf.far ? 'far' : 'near'];
       blit(g, lazy('giraffe' + i, () => bakeGiraffeBody(gf)));
       const ts = T.step(t, 6);
       const bob = T.wave(t, 9 + i * 2, 0.3 * i) > 0.6 ? -1 : 0;
@@ -2275,12 +2415,16 @@
 
   // toy-brick castle: blue towers, red curtain wall, yellow battlements, a
   // stepped red roof and a green baseplate, every top surface studded
+  // the bricks are plain pigment in an unlit corner of the garden, so every
+  // ramp sits ~1.5 steps down its colour and a third of the way into the
+  // night: still clearly red / blue / yellow / green, but muted like the rest
+  // of the cold side. [3] is kept for the moonlit right-hand rims only.
   const BRICK = {
-    r: [P.red[1], P.red[3], P.red[4], P.red[5]],
-    b: [P.night[3], mix(P.night[6], P.bulb.blue[1], 0.4), mix(P.night[7], P.bulb.blue[1], 0.55), mix(P.night[9], P.bulb.blue[2], 0.45)],
-    y: [P.gold[1], P.gold[3], P.gold[4], P.gold[5]],
-    g: [P.leaf[2], P.leaf[5], P.leaf[6], P.leaf[7]],
-    w: [P.bone[0], P.bone[1], P.bone[2], P.bone[3]],
+    r: [mix(P.red[0], P.violet[1], 0.3), mix(P.red[1], P.violet[3], 0.35), mix(P.red[2], P.violet[4], 0.35), mix(P.red[3], P.night[8], 0.35)],
+    b: [P.night[2], mix(P.night[4], P.bulb.blue[1], 0.24), mix(P.night[5], P.bulb.blue[1], 0.3), mix(P.night[8], P.bulb.blue[2], 0.25)],
+    y: [mix(P.gold[0], P.violet[1], 0.4), mix(P.gold[1], P.night[5], 0.42), mix(P.gold[2], P.night[6], 0.42), mix(P.gold[3], P.night[8], 0.38)],
+    g: [P.leaf[1], P.leaf[3], P.leaf[4], P.leaf[6]],
+    w: [mix(P.bone[0], P.night[3], 0.3), P.bone[0], P.bone[1], P.bone[2]],
   };
   function brickFill(B, x0, y0, x1, y1, col, opt) {
     const C = BRICK[col];
@@ -2405,9 +2549,10 @@
           const ry = y % 2;
           c2 = ry === 1 ? C[1] : C[2];
           if ((x + (row % 2) * 2) % 4 === 3 && ry === 1) c2 = C[0];
-          if (ch === 'Y') c2 = C[3];
+          if (ch === 'Y') c2 = C[2];
           if (at(x - 1, y) === '.') c2 = C[0];
-          if (at(x + 1, y) === '.' || at(x, y - 1) === '.') c2 = ry === 1 && at(x + 1, y) !== '.' ? C[1] : C[3];
+          if (at(x, y - 1) === '.') c2 = ry === 1 ? C[1] : C[2]; // top faces: one step up
+          if (at(x + 1, y) === '.') c2 = C[3]; // only the moonlit right-hand rim gets the top step
           if (ch === 'b' && at(x, y - 1) !== 'b' && at(x, y - 1) !== '.') c2 = C[1];
         }
         B.set(ox + x, oy + y, c2);
@@ -2417,7 +2562,7 @@
       for (let x = 0; x < W; x++) {
         const ch = BRICKCAT[y][x];
         if (ch === '.' || at(x, y - 1) !== '.') continue;
-        if (x % 2 === 0) B.set(ox + x, oy + y - 1, ch === 'b' ? BRICK.b[2] : BRICK.y[3]);
+        if (x % 2 === 0) B.set(ox + x, oy + y - 1, ch === 'b' ? BRICK.b[2] : BRICK.y[2]);
       }
     // whiskers
     B.set(ox - 1, oy + 5, P.bone[1]);
@@ -2429,6 +2574,10 @@
   // the little sailboat on the big puddle ("the bay"): drawn in fx right
   // after the engine's puddle reflections so the water doesn't wash it out
   const BOAT = { x: SU.boat.x, y: SU.boat.y };
+  // colours fixed once (no per-frame mix(): fresh strings also defeat the fillStyle cache)
+  const BOAT_HULL = [mix(P.bone[1], P.night[7], 0.25), mix(P.bone[2], P.night[8], 0.2), mix(P.red[3], P.violet[4], 0.3), P.night[4]];
+  const BOAT_REFL = mix(P.night[5], P.bone[0], 0.35);
+  const BOAT_LEECH = mix(P.bone[2], P.night[8], 0.3);
   function drawBoat(g, t) {
     const ts = T.step(t, 8);
     const x = R(BOAT.x + 7 * T.wave(t, 80, 0.15));
@@ -2436,38 +2585,49 @@
     const rock = T.wave(ts, 4.6, 0.6);
     const tilt = rock > 0.5 ? 1 : rock < -0.5 ? -1 : 0;
     const wl = BOAT.y; // waterline
-    const hull = [mix(P.bone[1], P.night[7], 0.25), mix(P.bone[2], P.night[8], 0.2), mix(P.red[3], P.violet[4], 0.3), P.night[4]];
-    // reflection: hull + sail flipped, broken by ripples
-    for (let k = 0; k < 7; k++) {
-      const yy = wl + 1 + (k >> 1);
-      if (yy > wl + 3) break;
-      const w = 4 - (k >> 1);
-      for (let dx = -w; dx <= w; dx++) if (HD.bayer(x + dx, yy + (ts * 8 % 2 | 0)) < 0.55) g.px(x + dx, yy, mix(P.night[5], P.bone[0], 0.35));
+    const hull = BOAT_HULL;
+    // reflection: a broken dither under the hull. The pattern only re-rolls
+    // every half second, and each row drifts by at most 1px (no 8 fps glitter)
+    const tr = T.step(t, 2);
+    const rp = (tr * 2) & 1;
+    for (let r = 0; r < 3; r++) {
+      const yy = wl + 1 + r;
+      const w = 4 - r;
+      const off = R(0.8 * T.wave(tr, 4.8, r * 0.31));
+      for (let dx = -w; dx <= w; dx++) if (HD.bayer(x + dx + off, yy + rp) < 0.55) g.px(x + dx + off, yy, BOAT_REFL);
     }
     // hull: 11px, a red boot stripe, a lit deck edge
-    for (let dx = -5; dx <= 5; dx++) {
-      g.px(x + dx, wl - 1 + bob, dx > 2 ? hull[1] : hull[0]);
-      if (Math.abs(dx) <= 4) g.px(x + dx, wl + bob, hull[2]);
-    }
+    g.hline(x - 5, x + 2, wl - 1 + bob, hull[0]);
+    g.hline(x + 3, x + 5, wl - 1 + bob, hull[1]);
+    g.hline(x - 4, x + 4, wl + bob, hull[2]);
     g.px(x + 6, wl - 2 + bob, hull[1]); // bow
     g.px(x - 6, wl - 1 + bob, hull[0]); // stern
     g.hline(x - 4, x + 4, wl + 1 + bob, hull[3]);
-    // mast and sails (main aft of the mast, a little jib forward)
+    // mast and sails (main aft of the mast, a little jib forward). The whole
+    // rig leans as one: every row shifts by its height above the deck x tilt
     const mx = x;
+    const deck = wl - 2 + bob;
     const top = wl - 13 + bob;
-    for (let y = top; y <= wl - 2 + bob; y++) g.px(mx + (y < top + 5 ? tilt : 0), y, P.wood[4]);
+    const lean = (y) => R((tilt * (deck - y)) / 11);
+    for (let y = top; y <= deck; y++) g.px(mx + lean(y), y, P.wood[4]);
     for (let k = 0; k <= 9; k++) {
       const y = top + 1 + k;
       const w = Math.round(k * 0.55);
-      for (let dx = 1; dx <= w; dx++) g.px(mx - dx + (k < 4 ? tilt : 0), y, dx === w ? mix(P.bone[2], P.night[8], 0.3) : dx === 1 ? P.bone[3] : P.bone[4]);
+      const o = lean(y);
+      if (w >= 2) g.px(mx - 1 + o, y, P.bone[3]);
+      if (w >= 3) g.hline(mx - w + 1 + o, mx - 2 + o, y, P.bone[4]);
+      if (w >= 1) g.px(mx - w + o, y, BOAT_LEECH);
     }
     for (let k = 0; k <= 6; k++) {
       const y = top + 4 + k;
       const w = Math.round(k * 0.6);
-      for (let dx = 1; dx <= w; dx++) g.px(mx + dx, y, dx === w ? P.bone[2] : P.bone[3]);
+      const o = lean(y);
+      if (w >= 2) g.hline(mx + 1 + o, mx + w - 1 + o, y, P.bone[3]);
+      if (w >= 1) g.px(mx + w + o, y, P.bone[2]);
     }
-    g.px(mx + tilt, top - 1, P.red[4]); // pennant
-    g.px(mx + tilt + 1, top - 1, P.red[3]);
+    const po = lean(top - 1);
+    g.px(mx + po, top - 1, P.red[4]); // pennant
+    g.px(mx + po + 1, top - 1, P.red[3]);
   }
 
   // ---- DC: the birthday table, cake and candles; balloons on the fence ---
@@ -2626,7 +2786,19 @@
   // and a pair tied to the birthday table's corner, over the cake
   const TABLE_BALLOONS = { x: SU.table.x + (SU.table.w >> 1) - 2, y: SU.table.base - 9, list: [[-2, -27, 'gold'], [4, -23, 'pink']] };
   const BAL_ROWS = ['.aabb.', 'aabbbc', 'aabbbb', 'aabbbb', '.aabb.', '..ab..', '...a..'];
+  // one baked sprite per colour: a frame blits them instead of plotting pixels
+  let BAL_SPR = null;
+  function balloonSprites() {
+    if (BAL_SPR) return BAL_SPR;
+    BAL_SPR = {};
+    for (const cn in BAL_COLS) {
+      const C = BAL_COLS[cn];
+      BAL_SPR[cn] = HD.sprite(BAL_ROWS, { a: C[0], b: C[1], c: C[2] });
+    }
+    return BAL_SPR;
+  }
   function drawBalloons(g, t, list) {
+    const SPR = balloonSprites();
     const ts = T.step(t, 8);
     const br = HD.summer.breeze(ts);
     list.forEach((bn, bi0) => {
@@ -2644,14 +2816,7 @@
         const my = R((bn.y + by + 5) / 2);
         g.line(bn.x, bn.y - 1, mx, my, P.bone[0]);
         g.line(mx, my, bx, by + 5, P.bone[0]);
-        const C = BAL_COLS[cn];
-        BAL_ROWS.forEach((row, ry) => {
-          for (let rx = 0; rx < row.length; rx++) {
-            const ch = row[rx];
-            if (ch === '.') continue;
-            g.px(bx - 3 + rx, by - 2 + ry, ch === 'a' ? C[0] : ch === 'b' ? C[1] : C[2]);
-          }
-        });
+        g.sprite(SPR[cn], bx - 3, by - 2);
       });
     });
   }
@@ -2660,6 +2825,8 @@
   // birdhouse is; the castle takes the left shrub's spot)
   const gardenKeeps = (ed, what) => {
     if (what === 'bird') return !ed.tagSet.has('giraffes');
+    // the anniversary chapter has THE bench on the stage; no second, empty one
+    if (what === 'bench') return !ed.tagSet.has('anniversary-bench');
     return true;
   };
 
@@ -2835,7 +3002,7 @@
       blit(g, A.snowman);
       drawScarf(g, t);
     }
-    blit(g, A.bench); // base 226
+    if (gardenKeeps(HD.edition, 'bench')) blit(g, A.bench); // base 226
     if (HD.tag('frog')) {
       blit(g, lazy('frogStone', bakeFrogStone));
       const spr = FROG_SPR[frogFrame(t)];

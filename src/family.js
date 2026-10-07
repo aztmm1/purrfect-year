@@ -132,6 +132,78 @@
     shoulder: [[1, BY, 'S'], [0, BY, 'S'], [0, BY - 1, 'S'], [-1, BY - 1, 'h'], [-1, BY - 2, 'h']],
   };
 
+  // ---- night-out wardrobe and single-paw poses (left side, mirrored) ----
+  const NARM = {
+    // forearm across the chest, paw under the chin (a songbook)
+    chest: [[1, BY + 1, 'S'], [1, BY + 2, 'S'], [2, BY + 2, 'S'], [3, BY + 1, 'h']],
+    // held out at the side at waist height (a glass, a mug, a lantern stick)
+    out: [[1, BY + 1, 'S'], [0, BY + 2, 'h'], [-1, BY + 2, 'h']],
+    // raised beside the head (a toast)
+    toast: [[1, BY, 'S'], [0, BY, 'S'], [-1, BY - 1, 'S'], [-2, BY - 2, 'h'], [-2, BY - 3, 'h']],
+    up: ARM.up,
+    up2: ARM.up2,
+  };
+  function nightArm(G, side, kind, pawX) {
+    const a = NARM[kind];
+    if (!a) return;
+    for (let y = BY + 1; y <= BY + 3; y++) if ('ShAC'.includes(get(G, pawX, y))) set(G, pawX, y, '.');
+    for (const [dx, y, ch] of a) set(G, side < 0 ? BX + dx : BX + 8 - dx, y, ch);
+  }
+  /** body wear drawn before the arms: collars, long coats, dresses, capes */
+  function nightWear(G, sp) {
+    if (sp.neck === 'mandarin') {
+      for (let x = BX + 3; x <= BX + 5; x++) set(G, x, BY, 'C');
+      set(G, BX + 5, BY + 1, 'C');
+    } else if (sp.neck === 'vneck') {
+      set(G, BX + 4, BY, 'h');
+      set(G, BX + 4, BY + 1, 'h');
+    }
+    if (sp.coat) {
+      for (let x = BX + 2; x <= BX + 6; x++) set(G, x, BY + 4, 'S');
+      set(G, BX + 4, BY + 1, 'A');
+      set(G, BX + 4, BY + 3, 'A');
+    }
+    if (sp.dress) {
+      for (let x = BX + 1; x <= BX + 7; x++) set(G, x, BY + 4, 'L');
+      for (const x of [BX + 2, BX + 3, BX + 5, BX + 6]) if (get(G, x, BY + 5) === 'L') set(G, x, BY + 5, 'h');
+    }
+    if (sp.cape) {
+      for (let y = BY + 1; y <= BY + 5; y++) {
+        set(G, BX, y, 'K');
+        set(G, BX + 8, y, 'K');
+      }
+      set(G, BX + 1, BY, 'K');
+      set(G, BX + 7, BY, 'K');
+    }
+  }
+  // hats in head coords [col, row, ch]; the head is 9 wide, ears at cols 1 and 7
+  const WITCH_BRIM = [];
+  for (let c = -1; c <= 9; c++) WITCH_BRIM.push([c, 1, 'a']);
+  const HATS = {
+    party: [[4, -3, 'p'], [4, -2, 'a'], [4, -1, 'c'], [3, 0, 'a'], [4, 0, 'a'], [5, 0, 'c'], [3, 1, 'c'], [4, 1, 'c'], [5, 1, 'a']],
+    beanie: [[4, -1, 'p'], [3, 0, 'a'], [4, 0, 'a'], [5, 0, 'a'], [2, 1, 'a'], [3, 1, 'a'], [4, 1, 'a'], [5, 1, 'a'], [6, 1, 'a'], [1, 2, 'c'], [2, 2, 'c'], [3, 2, 'c'], [4, 2, 'c'], [5, 2, 'c'], [6, 2, 'c'], [7, 2, 'c']],
+    witch: [[6, -4, 'a'], [5, -3, 'a'], [6, -3, 'a'], [4, -2, 'a'], [5, -2, 'a'], [3, -1, 'a'], [4, -1, 'a'], [5, -1, 'a'], [2, 0, 'd'], [3, 0, 'd'], [4, 0, 'd'], [5, 0, 'd'], [6, 0, 'd']].concat(WITCH_BRIM),
+    crown: [[1, 2, 'v'], [2, 2, 'p'], [3, 2, 'v'], [4, 2, 'u'], [5, 2, 'v'], [6, 2, 'p'], [7, 2, 'v'], [3, 1, 'u'], [5, 1, 'p']],
+    bunny: [[2, -4, 'a'], [3, -4, 'a'], [5, -4, 'a'], [6, -4, 'a'], [2, -3, 'a'], [3, -3, 'c'], [5, -3, 'c'], [6, -3, 'a'], [2, -2, 'a'], [3, -2, 'c'], [5, -2, 'c'], [6, -2, 'a'], [3, -1, 'a'], [5, -1, 'a'], [2, 0, 'd'], [3, 0, 'd'], [4, 0, 'd'], [5, 0, 'd'], [6, 0, 'd']],
+    stem: [[4, 1, 'v'], [4, 0, 'v'], [5, -1, 'v']],
+  };
+  /** worn over fur and hair: hats, scarves, a cape's high collar */
+  function nightTop(G, sp, HX, HY) {
+    if (sp.hat) for (const [c, r, ch] of HATS[sp.hat]) set(G, HX + c, HY + r, ch);
+    if (sp.scarf) {
+      for (let x = BX + 2; x <= BX + 6; x++) set(G, x, BY, x & 1 ? 'r' : 's');
+      const tx = sp.scarf === 'L' ? BX + 3 : BX + 5;
+      set(G, tx, BY + 1, 's');
+      set(G, tx, BY + 2, 'r');
+    }
+    if (sp.cape) {
+      set(G, HX - 1, HY + 5, 'K');
+      set(G, HX - 1, HY + 6, 'c');
+      set(G, HX + 9, HY + 5, 'K');
+      set(G, HX + 9, HY + 6, 'c');
+    }
+  }
+
   /**
    * sp: character spec (colours + traits), p: pose
    *  p.look -1|0|1, p.blink, p.ear, p.eyes 'open'|'happy'|'closed',
@@ -157,6 +229,12 @@
         else if (sp.pattern === 'stripesH' && v % 2 === 1) G[y][x] = 'A';
         else if (sp.pattern === 'plaid' && (u % 3 === 1 || v === 2)) G[y][x] = 'A';
         else if (sp.pattern === 'floral' && (u * 3 + v * 5) % 7 === 2) G[y][x] = 'A';
+        // night-out wardrobe (only the night-out cast uses these)
+        else if (sp.pattern === 'band' && v === 2) G[y][x] = 'A';
+        else if (sp.pattern === 'cable' && v >= 1 && u % 3 === 1) G[y][x] = 'A';
+        else if (sp.pattern === 'hem' && v === 3) G[y][x] = 'A';
+        else if (sp.pattern === 'bones' && ((u === 4 && v >= 1) || ((v === 1 || v === 3) && u >= 2 && u <= 6 && u !== 4))) G[y][x] = 'A';
+        else if (sp.pattern === 'jack' && ((v === 1 && (u === 2 || u === 6)) || (v === 2 && u === 4) || (v === 3 && u >= 2 && u <= 6 && u !== 4))) G[y][x] = 'A';
       }
     if (sp.neck === 'tee') set(G, BX + 4, BY, 'h');
     if (sp.neck === 'polo' || sp.neck === 'shirt') {
@@ -176,6 +254,7 @@
     // waistband: separates a pale tee from pale shorts
     if (sp.belt && !sit) for (let x = BX + 2; x <= BX + 6; x++) set(G, x, BY + 4, 'Q');
     if (sp.belt && sit) for (let x = BX + 2; x <= BX + 6; x++) set(G, x, BY + 3, 'Q');
+    if (sp.night && !sit) nightWear(G, sp);
     // ---- arms ----
     const pawL = sp.round ? BX : BX + 1;
     const pawR = sp.round ? BX + 8 : BX + 7;
@@ -201,6 +280,9 @@
     } else if (arms === 'hold') {
       set(G, pawL, BY + 3, '.');
     }
+    // night-out: each paw posed on its own (p.al / p.ar)
+    if (p.al) nightArm(G, -1, p.al, pawL);
+    if (p.ar) nightArm(G, 1, p.ar, pawR);
     // ---- head ----
     stamp(G, p.wide ? HEAD_WIDE : p.ear ? HEAD_FLICK : HEAD, HX, HY);
     if (sp.temples) for (const [x, y] of [[0, 3], [8, 3], [1, 2], [7, 2], [0, 4], [8, 4]]) set(G, HX + x, HY + y, 'x');
@@ -338,6 +420,8 @@
       set(G, HX + 3, HY + 0, 'B');
       set(G, HX + 2, HY + 1, 'B');
     }
+    // night-out: hats, scarves and collars go on last, over fur and hair
+    if (sp.night) nightTop(G, sp, HX, HY);
     return G;
   }
 
@@ -369,11 +453,17 @@
       B: sp.bow || nite('#3a6ad0'),
       b: sp.bowDark || nite('#244a9a'),
     };
+    if (sp.night) {
+      // night-out wardrobe: hat, hat stripe/lining, hat band, pompom/flower,
+      // second flower, leaf/stem, scarf stripes, cape
+      Object.assign(m, { a: sp.hatC, c: sp.hatC2 || sp.hatC, d: sp.hatBand || sp.hatC, p: sp.pom, u: sp.flower2 || sp.pom, v: sp.leaf, r: sp.scarfC, s: sp.scarfC2 || sp.scarfC, K: sp.capeC });
+    }
     const em = { e: sp.eye || '#d9b45a', z: sp.glint || '#a8c4e8' };
     return { m, em };
   }
   function adult(sp, p) {
-    const key = sp.key + '|' + (p.look || 0) + (p.blink ? 'b' : '') + (p.ear ? 'e' : '') + (p.eyes || '') + '|' + (p.mouth || '') + '|' + (p.arms || '') + (p.sit ? 's' : '') + (p.wide ? 'w' : '') + '|' + (p.hx || 0) + ',' + (p.hy || 0) + ',' + (p.br || 0) + ',' + (p.gust || 0);
+    let key = sp.key + '|' + (p.look || 0) + (p.blink ? 'b' : '') + (p.ear ? 'e' : '') + (p.eyes || '') + '|' + (p.mouth || '') + '|' + (p.arms || '') + (p.sit ? 's' : '') + (p.wide ? 'w' : '') + '|' + (p.hx || 0) + ',' + (p.hy || 0) + ',' + (p.br || 0) + ',' + (p.gust || 0);
+    if (p.al || p.ar) key += '|' + (p.al || '') + ',' + (p.ar || '');
     return memo(key, () => {
       const mp = sp._map || (sp._map = adultMap(sp));
       return bake(buildAdult(sp, p), mp.m, mp.em);
@@ -1148,7 +1238,19 @@
     }
     return 0;
   }
+  // night out: he watches alone, glancing out at her group now and then
+  const MATCH_GLANCES = [[96, 99.5], [201, 204]];
+  function drawMatchAlone(g, t) {
+    const goal = HD.summer.goal(t);
+    const cheering = goal >= 0 && goal < 0.6;
+    const s = HD.summer.sec(T.step(t, 8));
+    const glance = MATCH_GLANCES.some(([a, b]) => s >= a && s < b);
+    const yi = idle(t, 3);
+    drawAdult(g, t, Object.assign(you('match'), { tailSide: -1 }), MATCH_YOU, MATCH_SEAT - (cheering ? hopAt(t, 0) : 0), 3,
+      cheering ? cheer() : { sit: true, look: glance ? 1 : -1, blink: yi.blink, mouth: 'smile' });
+  }
   function drawMatch(g, t) {
+    if (nightCfg()) return drawMatchAlone(g, t);
     const goal = HD.summer.goal(t);
     const cheering = goal >= 0 && goal < 0.6;
     const lean = cheering ? 0 : matchLean(t);
@@ -1312,6 +1414,562 @@
     drawKit(g, t, o, k.x, k.base + bob, { pose, arms, blink: ki.blink, look });
   }
 
+  // =====================================================================
+  // NIGHT OUT: the Boston celebrations. She is out in the lit yard with her
+  // friends; he is home alone in the upper-right window (drawn by house).
+  // OFF unless the edition carries the 'night-out' tag or the page has
+  // ?nightout=1, and only in the editions listed in NIGHT below.
+  // =====================================================================
+  const NIGHT_FLAG = HD.flag('nightout', false);
+  function nightCfg() {
+    const c = NIGHT[HD.edition.id];
+    return c && (NIGHT_FLAG || HD.tag('night-out')) ? c : null;
+  }
+
+  // the wife plus three friends: original generic cats, no names
+  const NFUR = {
+    wife: { fur: PARTNER.fur, hair: 'long', hairC: PARTNER.hairC, sheenC: PARTNER.sheenC, light: PARTNER.light, eye: PARTNER.eye, nose: PARTNER.nose, mouthC: PARTNER.mouthC, happyEm: true },
+    ginger: { fur: nite('#d4782f'), dark: nite('#94451a'), light: nite('#f6d29c'), muzzle: 'f', tabby: true, inner: nite('#f0a0a0'), eye: '#e8d050', nose: nite('#e88a94'), mouthC: '#3a160c', happyEm: true },
+    cream: { fur: nite('#ece2d0'), light: nite('#fffaf0'), muzzle: 'f', inner: nite('#f4a8b4'), eye: '#8cc8f4', nose: nite('#f08c9c'), mouthC: '#5a3438', lid: '#3a2a2a', happyEm: true },
+    tabby: { fur: nite('#a0a6b0'), dark: nite('#4e545e'), light: nite('#dfe2e8'), muzzle: 'f', tabby: true, inner: nite('#d8909c'), eye: '#a8dc68', nose: nite('#c87888'), mouthC: '#2a1a22', happyEm: true },
+  };
+  const NSPEC = new Map();
+  function nightSpec(id, who, tail) {
+    const k = id + '|' + who;
+    let s = NSPEC.get(k);
+    if (!s) NSPEC.set(k, (s = Object.assign({ key: 'no-' + k, night: true }, NFUR[who], NIGHT[id].wear[who], { tailSide: tail })));
+    return s;
+  }
+
+  // two stages, both inside the x 152..305 phone crop with his window:
+  //  LEFT, between the fire/porch light and the path; RIGHT, under his window.
+  // A loose zig-zag row [x, base, tail side, facing], left to right.
+  const STAGE = {
+    left: [[158, 227, -1, 1], [170, 220, -1, 1], [182, 226, 1, -1], [194, 219, 1, -1]],
+    right: [[262, 224, -1, 1], [273, 219, -1, 1], [285, 225, 1, -1], [296, 220, 1, -1]],
+  };
+
+  /** chatting: look at the neighbours, talk in short bursts, laugh now and then */
+  function social(t, seed, face) {
+    const ts = T.step(t, 8);
+    const n = T.noise(ts, 6 + (seed % 4) * 1.3, seed * 17 + 9);
+    const look = n < 0.6 ? face : n < 0.82 ? 0 : -face;
+    const tc = T.cycle(ts, 8, 8.3 + (seed % 5) * 1.7, seed * 13 + 7);
+    const a = tc.age * tc.P;
+    const laugh = a > 2.6 && a < 3.9 && tc.rnd(1) < 0.5;
+    const talk = a < 2.2 && (Math.floor(T.step(t, 5) * 5) + seed) % 3 !== 0;
+    return { look, mouth: laugh || talk ? 'laugh' : 'smile', eyes: laugh ? 'happy' : undefined };
+  }
+  /** something to hold: sets that paw's pose and remembers the item */
+  function give(c, side, arm, k, extra) {
+    if (side < 0) c.al = arm;
+    else c.ar = arm;
+    c.items.push(Object.assign({ k, side, arm }, extra || {}));
+  }
+  function cheerUp(c, t, k) {
+    c.o.eyes = 'happy';
+    c.o.mouth = 'laugh';
+    c.o.look = 0;
+    c.hop = hopAt(t, k);
+  }
+
+  let NS_T = NaN;
+  let NS_ED = null;
+  let NS = null;
+  /** the whole group at time t (pure; memoised for the lights + draw of one frame) */
+  function nightScene(t) {
+    const cfg = nightCfg();
+    if (!cfg) return null;
+    if (t === NS_T && NS_ED === HD.edition) return NS;
+    const id = HD.edition.id;
+    const s = HD.summer.sec(t);
+    const big = cfg.big ? cfg.big(t, s) : -1;
+    const st = STAGE[cfg.stage];
+    const cats = cfg.cast.map((who, i) => {
+      const [x, base, tail, face] = st[i];
+      const seed = 41 + i * 7 + cfg.seed;
+      const c = { who, i, x, base, tail, face, seed, sp: nightSpec(id, who, tail), al: '', ar: '', items: [], hop: 0, o: social(t, seed, face) };
+      cfg.act(c, t, s, big);
+      c.b = c.base - c.hop;
+      return c;
+    });
+    cats.sort((a, b) => a.base - b.base || a.x - b.x);
+    NS_T = t;
+    NS_ED = HD.edition;
+    NS = { cfg, cats, s, big };
+    return NS;
+  }
+
+  // ---- held items (night colours relight warm; glows are emissive) ----
+  const IC = {
+    glass: nite('#e4ecf4'),
+    fizz: nite('#f2d27a'),
+    lemon: nite('#f4e08a'),
+    stick: '#2c2a32',
+    wick: '#4a4048',
+    steam: '#7c8296',
+    wicker: nite('#b88a4e'),
+    wickerD: nite('#7a5430'),
+    clay: nite('#b8643a'),
+    clayD: nite('#7a3a22'),
+    pail: nite('#ee7a22'),
+    pailD: nite('#a8461a'),
+    book: nite('#9a1e2a'),
+    bookG: nite('#2a6a3a'),
+    page: nite('#f2ead6'),
+    frame: '#24222a',
+  };
+  const EGGC = [nite('#f4a8c8'), nite('#a8d0f4'), nite('#f4e08a'), nite('#b8e8b0'), nite('#d0b0f0')];
+  const SPARK = ['#fffbe8', '#ffe8a0', '#ffc860', '#ff9a40'];
+  /** the paw a held item sits in, in world pixels */
+  function pawOf(c, side, arm) {
+    const x = c.x;
+    const b = c.b;
+    if (arm === 'out') return [x + side * 5, b - 4];
+    if (arm === 'toast') return [x + side * 6, b - 9];
+    if (arm === 'up') return [x + side * 7, b - 14];
+    if (arm === 'up2') return [x + side * 8, b - 14];
+    if (arm === 'chest') return [x + side, b - 5];
+    return [x + side * 3, b - 3];
+  }
+  /** where an item's light (or glowing head) is */
+  function itemHead(c, it) {
+    const [px, py] = pawOf(c, it.side, it.arm);
+    const s = it.side;
+    if (it.k === 'sparkler') return it.arm === 'out' ? [px + 2 * s, py - 4] : [px + s, py - 3];
+    if (it.k === 'redLantern' || it.k === 'paperLantern') return it.arm === 'out' ? [px + s, py - 5] : [px + 2 * s, py - 3];
+    if (it.k === 'pole') return [px + 2 * s, py - 17];
+    return [px, py];
+  }
+  function drawSparkler(g, t, x0, y0, hx, hy, seed, big) {
+    g.line(x0, y0, hx, hy + 1, IC.stick);
+    const e = g.em;
+    const fr = Math.floor(T.step(t, 12) * 12);
+    e.px(hx, hy, SPARK[0]);
+    const n = big ? 8 : 6;
+    for (let k = 0; k < n; k++) {
+      const a = HD.hash(seed, fr, k, 1) * Math.PI * 2;
+      const r = 1 + HD.hash(seed, fr, k, 2) * (big ? 4 : 3);
+      const sx = R(hx + Math.cos(a) * r);
+      const sy = R(hy + Math.sin(a) * r * 0.9);
+      e.px(sx, sy, SPARK[Math.min(3, Math.floor(r))]);
+    }
+    if (fr % 2) e.px(hx + 1, hy, SPARK[1]);
+    else e.px(hx - 1, hy, SPARK[1]);
+  }
+  function drawCandleLantern(g, t, x, y, seed) {
+    // small metal carol lantern on a hook: cap, glowing glass, base
+    const [bx, by] = HD.festive.lanternPos(x, y, t, seed, { len: 2, amp: 0.14 });
+    g.line(R(x), R(y), bx, by, IC.frame);
+    const f = T.flicker(T.step(t, 10), seed, 1.2);
+    const e = g.em;
+    g.px(bx, by + 1, IC.frame);
+    g.hline(bx - 1, bx + 1, by + 2, IC.frame);
+    g.px(bx - 1, by + 3, IC.frame);
+    g.px(bx + 1, by + 3, IC.frame);
+    g.px(bx - 1, by + 4, IC.frame);
+    g.px(bx + 1, by + 4, IC.frame);
+    e.px(bx, by + 3, P.amber[f > 0.5 ? 7 : 6]);
+    e.px(bx, by + 4, P.amber[f > 0.3 ? 8 : 7]);
+    g.hline(bx - 1, bx + 1, by + 5, IC.frame);
+  }
+  function drawItem(g, t, c, it) {
+    const s = it.side;
+    const [px, py] = pawOf(c, s, it.arm);
+    const seed = c.seed * 5 + (s > 0 ? 1 : 0);
+    const k = it.k;
+    if (k === 'flute') {
+      g.px(px, py - 1, IC.glass);
+      g.px(px, py - 2, IC.fizz);
+      g.px(px, py - 3, IC.fizz);
+      g.px(px, py - 4, IC.glass);
+      if (it.glint) g.em.px(px, py - 4, '#ffffff');
+    } else if (k === 'cup') {
+      g.px(px, py - 1, IC.lemon);
+      g.px(px + s, py - 1, IC.lemon);
+      g.px(px, py - 2, IC.glass);
+      g.px(px + s, py - 2, IC.lemon);
+      if (it.glint) g.em.px(px + s, py - 2, '#ffffff');
+    } else if (k === 'mug') {
+      const mc = it.c || IC.glass;
+      g.px(px, py - 1, mc);
+      g.px(px + s, py - 1, mc);
+      g.px(px, py - 2, mc);
+      g.px(px + s, py - 2, mc);
+      g.px(px + 2 * s, py - 2, mc);
+      // steam: two wisps curling up, 3 fps
+      const fr = Math.floor(T.step(t, 3) * 3) + c.seed;
+      for (let w = 0; w < 2; w++) {
+        const u = (fr + w * 2) % 4;
+        const sx = px + (w ? s : 0) + (u >= 2 ? s : 0);
+        const sy = py - 4 - u;
+        if (HD.bayer(sx, sy) < 0.75 - u * 0.15) g.px(sx, sy, IC.steam);
+      }
+    } else if (k === 'sparkler') {
+      const [hx, hy] = itemHead(c, it);
+      drawSparkler(g, t, px, py - 1, hx, hy, seed, it.big);
+    } else if (k === 'redLantern' || k === 'paperLantern') {
+      const [hx, hy] = itemHead(c, it);
+      g.line(px, py - 1, hx, hy, IC.stick);
+      HD.festive.lantern(g, hx, hy, t, seed, k === 'redLantern' ? 'red' : 'paper', { size: 'small', len: 1, amp: 0.3 });
+    } else if (k === 'pole') {
+      const [hx, hy] = itemHead(c, it);
+      g.vline(px, hy, py - 1, IC.stick);
+      g.px(px + s, hy, IC.stick);
+      g.px(hx, hy + 1, IC.stick);
+      drawCandleLantern(g, t, hx, hy + 1, seed);
+    } else if (k === 'diya') {
+      g.hline(px - 1, px + 1, py - 1, IC.clay);
+      g.px(px, py, IC.clayD);
+      g.px(px + s * 2, py - 2, IC.clay);
+      g.em.px(px, py - 2, P.amber[3]);
+      HD.festive.flame(g, px + s * 2, py - 2, t, seed, 1);
+    } else if (k === 'basket') {
+      const bx = px + 2 * s;
+      const by = c.base;
+      for (let y = by - 2; y <= by; y++) for (let x = bx - 2; x <= bx + 2; x++) g.px(x, y, (x + y) & 1 ? IC.wicker : IC.wickerD);
+      g.px(bx - 1, by - 3, EGGC[0]);
+      g.px(bx, by - 3, EGGC[2]);
+      g.px(bx + 1, by - 3, EGGC[1]);
+      g.px(bx - 2, by - 3, IC.wickerD);
+      g.px(bx + 2, by - 3, IC.wickerD);
+      g.hline(bx - 1, bx + 1, by - 5, IC.wicker);
+      g.px(bx - 2, by - 4, IC.wicker);
+      g.px(bx + 2, by - 4, IC.wicker);
+    } else if (k === 'book') {
+      const bc = it.c || IC.book;
+      g.hline(px - 1, px + 1, py - 1, bc);
+      g.hline(px - 1, px + 1, py, bc);
+      g.px(px + s, py - 1, IC.page);
+    } else if (k === 'pail') {
+      g.px(px - 1, py, IC.frame);
+      g.px(px + 1, py, IC.frame);
+      g.hline(px - 1, px + 1, py + 1, IC.pail);
+      g.hline(px - 1, px + 1, py + 2, IC.pail);
+      g.hline(px - 1, px + 1, py + 3, IC.pailD);
+      const f = T.flicker(T.step(t, 10), seed, 1.2);
+      g.em.px(px - 1, py + 2, P.fire[f > 0.4 ? 8 : 7]);
+      g.em.px(px + 1, py + 2, P.fire[f > 0.4 ? 8 : 7]);
+      g.em.px(px, py + 3, P.fire[f > 0.6 ? 7 : 6]);
+    } else if (k === 'egg') {
+      const ec = EGGC[it.c || 4];
+      g.px(px, py - 1, ec);
+      g.px(px + s, py - 1, ec);
+      g.px(px, py - 2, EGGC[2]);
+      g.px(px + s, py - 2, EGGC[2]);
+      g.px(px, py - 3, ec);
+    } else if (k === 'scarfUp') {
+      // a football scarf held up between both paws
+      const y = c.b - 15;
+      for (let x = c.x - 7; x <= c.x + 7; x++) {
+        const ch = ((x - c.x + 7) >> 1) & 1 ? c.sp.scarfC2 : c.sp.scarfC;
+        g.px(x, y, ch);
+        g.px(x, y - 1, ch);
+      }
+      g.px(c.x - 8, y, c.sp.scarfC);
+      g.px(c.x - 8, y + 1, c.sp.scarfC2);
+      g.px(c.x + 8, y, c.sp.scarfC);
+      g.px(c.x + 8, y + 1, c.sp.scarfC2);
+    } else if (k === 'wings') {
+      // the vampire opens the cape: dark outside, red lining inside
+      for (const sd of [-1, 1]) {
+        for (let y = c.b - 12; y <= c.b - 2; y++) {
+          const reach = 7 - Math.floor((y - (c.b - 12)) / 4);
+          for (let d = 5; d <= reach; d++) g.px(c.x + sd * d, y, d === reach || y === c.b - 12 ? c.sp.capeC : c.sp.hatC2);
+        }
+        // scalloped hem
+        g.px(c.x + sd * 6, c.b - 1, c.sp.capeC);
+      }
+    }
+  }
+  /** sequins on a party dress: a couple of emissive glints hop about */
+  function sequins(g, t, c) {
+    const fr = Math.floor(T.step(t, 4) * 4);
+    for (let k = 0; k < 2; k++) {
+      const dx = Math.floor(HD.hash(c.seed, fr, k, 3) * 7) - 3;
+      const dy = Math.floor(HD.hash(c.seed, fr, k, 4) * 5);
+      g.em.px(c.x + dx, c.b - 6 + dy, k ? '#fff4c8' : '#ffffff');
+    }
+  }
+
+  function drawNight(g, t) {
+    const S = nightScene(t);
+    if (!S) return;
+    const w = hairWind(t);
+    for (const c of S.cats) {
+      const o = Object.assign({}, c.o);
+      if (c.al) o.al = c.al;
+      if (c.ar) o.ar = c.ar;
+      if (c.who === 'wife') {
+        o.br = w.br;
+        o.gust = w.gust;
+      }
+      for (const it of c.items) if (it.k === 'wings') drawItem(g, t, c, it);
+      drawAdult(g, t, c.sp, c.x, c.b, c.seed, o);
+      if (c.sp.sequins) sequins(g, t, c);
+      for (const it of c.items) if (it.k !== 'wings') drawItem(g, t, c, it);
+    }
+    if (S.cfg.after) S.cfg.after(g, t, S);
+  }
+  const SPK_L = [1, 0.82, 0.5];
+  function lightsNight(t, L) {
+    const S = nightScene(t);
+    if (!S) return;
+    for (const c of S.cats)
+      for (const it of c.items) {
+        const seed = c.seed * 5 + (it.side > 0 ? 1 : 0);
+        const [hx, hy] = itemHead(c, it);
+        if (it.k === 'sparkler') {
+          const f = T.flicker(T.step(t, 12), seed, 2);
+          L.add({ x: hx, y: hy, r: it.big ? 24 : 20, color: SPK_L, i: (it.big ? 0.42 : 0.32) * (0.8 + 0.35 * f) });
+        } else if (it.k === 'redLantern' || it.k === 'paperLantern') {
+          HD.festive.lanternLight(L, hx, hy, t, seed, it.k === 'redLantern' ? 'red' : 'paper', { size: 'small', len: 1, amp: 0.3, r: 22, i: 0.3, halo: false });
+        } else if (it.k === 'pole') {
+          const [bx, by] = HD.festive.lanternPos(hx, hy + 1, t, seed, { len: 2, amp: 0.14 });
+          const f = T.flicker(T.step(t, 10), seed, 1.2);
+          L.add({ x: bx, y: by + 4, r: 30, color: HD.LIGHT.candle, i: 0.42 * (0.85 + 0.25 * f), halo: { r: 7, a: 0.12 } });
+        } else if (it.k === 'diya') {
+          const [px, py] = pawOf(c, it.side, it.arm);
+          HD.festive.flameLight(L, px + it.side * 2, py - 2, t, seed, 18, 0.3);
+        } else if (it.k === 'pail') {
+          const f = T.flicker(T.step(t, 10), seed, 1.2);
+          L.add({ x: hx, y: hy + 2, r: 18, color: HD.LIGHT.pumpkin, i: 0.3 * (0.8 + 0.3 * f) });
+        }
+      }
+    if (S.cfg.fill) S.cfg.fill(t, L, S);
+  }
+
+  // ---- the editions -----------------------------------------------------
+  const inWin = (s, a, b) => (s >= a && s < b ? (s - a) / (b - a) : -1);
+  const N = nite;
+  const NIGHT = {
+    // Lunar New Year: red tops with gold trim, small red lanterns and sparklers
+    lunar: {
+      stage: 'right',
+      seed: 0,
+      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      wear: {
+        wife: { shirt: N('#d41e2a'), collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#24182a') },
+        ginger: { shirt: N('#c8202c'), shirtAlt: N('#f0b830'), pattern: 'floral', neck: 'tee', pants: N('#2a2228') },
+        cream: { shirt: N('#b0162c'), collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#1e1a22') },
+        tabby: { shirt: N('#e23428'), shirtAlt: N('#f4c440'), pattern: 'hem', neck: 'tee', pants: N('#2a2a34') },
+      },
+      big: (t, s) => inWin(s, 118, 124),
+      act(c, t, s, big) {
+        const up = big >= 0;
+        if (c.who === 'wife') give(c, -1, up ? 'up' : 'out', 'redLantern');
+        else if (c.who === 'tabby') give(c, 1, up ? 'up' : 'out', 'redLantern');
+        else give(c, c.who === 'ginger' ? -1 : 1, up ? 'up' : 'out', 'sparkler', { big: up });
+        if (up) cheerUp(c, t, c.i);
+      },
+    },
+    // Easter: pastel tops, a night egg hunt with a basket and a paper lantern
+    spring: {
+      stage: 'left',
+      seed: 3,
+      cast: ['cream', 'ginger', 'wife', 'tabby'],
+      wear: {
+        wife: { shirt: N('#c4a0ea'), neck: 'tee', pants: N('#efe6d2') },
+        ginger: { shirt: N('#9cdcb8'), neck: 'tee', pants: N('#f2ecdc'), hat: 'bunny', hatC: N('#f6f2ee'), hatC2: N('#f4a8c0'), hatBand: N('#f4a8c0') },
+        cream: { shirt: N('#f6b49c'), neck: 'tee', pants: N('#f4f0e6') },
+        tabby: { shirt: N('#9cc4f0'), neck: 'tee', pants: N('#ece6d6') },
+      },
+      big: (t, s) => inWin(s, 96, 102),
+      act(c, t, s, big) {
+        if (c.who === 'cream') give(c, 1, 'down', 'basket');
+        if (c.who === 'wife') give(c, 1, 'out', 'paperLantern');
+        if (big >= 0) {
+          if (c.who === 'tabby') {
+            give(c, -1, 'up', 'egg', { c: 4 });
+            c.o.eyes = 'happy';
+            c.o.mouth = 'laugh';
+          } else if (c.who === 'ginger') cheerUp(c, t, 1);
+          else {
+            c.o.eyes = 'happy';
+            c.o.mouth = 'laugh';
+            c.o.look = c.face;
+          }
+        }
+      },
+    },
+    // Midsummer: flower crowns, light summer clothes, a toast by the bonfire
+    summer: {
+      stage: 'left',
+      seed: 6,
+      cast: ['ginger', 'cream', 'wife', 'tabby'],
+      wear: {
+        wife: { shirt: N('#f6f2ea'), pants: N('#f6f2ea'), dress: true, neck: 'tee', hat: 'crown', pom: N('#f4a0c0'), flower2: N('#f8e070'), leaf: N('#5aa84a') },
+        ginger: { shirt: N('#f2d24a'), neck: 'tee', pants: N('#9ab4d8'), hat: 'crown', pom: N('#f8f4f0'), flower2: N('#c8a0f0'), leaf: N('#5aa84a') },
+        cream: { shirt: N('#8ec0f0'), pants: N('#8ec0f0'), dress: true, neck: 'tee', hat: 'crown', pom: N('#f8e070'), flower2: N('#f48aa8'), leaf: N('#5aa84a') },
+        tabby: { shirt: N('#f08a70'), neck: 'tee', pants: N('#f2ecdc'), hat: 'crown', pom: N('#ffffff'), flower2: N('#f8e070'), leaf: N('#5aa84a') },
+      },
+      big: (t, s) => inWin(s, 84, 90),
+      act(c, t, s, big) {
+        const side = c.face;
+        if (big >= 0) {
+          give(c, side, 'toast', 'cup', { glint: big > 0.3 && big < 0.5 });
+          c.o.eyes = 'happy';
+          c.o.mouth = 'laugh';
+          c.o.look = side;
+        } else give(c, side, 'out', 'cup');
+      },
+    },
+    // Harvest & Thanksgiving: cosy sweaters and scarves, warm mugs
+    harvest: {
+      stage: 'left',
+      seed: 9,
+      cast: ['tabby', 'ginger', 'wife', 'cream'],
+      wear: {
+        wife: { shirt: N('#ece0c4'), shirtAlt: N('#cdbf9e'), pattern: 'cable', neck: 'tee', pants: N('#2c3650'), scarf: 'R', scarfC: N('#c0582a'), scarfC2: N('#e8923e') },
+        ginger: { shirt: N('#3a7a50'), shirtAlt: N('#ece0c4'), pattern: 'band', neck: 'tee', pants: N('#3a3036'), scarf: 'L', scarfC: N('#efe6d2'), scarfC2: N('#c8bca4') },
+        cream: { shirt: N('#8e2a3a'), shirtAlt: N('#b84a58'), pattern: 'cable', neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#e0a83a'), scarfC2: N('#b88028') },
+        tabby: { shirt: N('#d8a033'), shirtAlt: N('#8e2a3a'), pattern: 'band', neck: 'tee', pants: N('#4a3a30'), scarf: 'L', scarfC: N('#8e2a3a'), scarfC2: N('#b84a58') },
+      },
+      big: (t, s) => inWin(s, 132, 138),
+      act(c, t, s, big) {
+        const mugs = { wife: N('#efe6d6'), ginger: N('#c84a3a'), cream: N('#4a7ab8'), tabby: N('#efe6d6') };
+        if (big >= 0) {
+          give(c, c.face, 'toast', 'mug', { c: mugs[c.who] });
+          c.o.eyes = 'happy';
+          c.o.mouth = 'laugh';
+          c.o.look = c.face;
+        } else give(c, c.face, 'out', 'mug', { c: mugs[c.who] });
+      },
+    },
+    // Halloween: simple homemade costumes around the campfire
+    halloween: {
+      stage: 'left',
+      seed: 12,
+      cast: ['cream', 'ginger', 'wife', 'tabby'],
+      wear: {
+        wife: { shirt: N('#6a3a9a'), neck: 'vneck', pants: N('#1c1622'), dress: true, hat: 'witch', hatC: N('#3a2a58'), hatBand: N('#e88a24') },
+        ginger: { shirt: N('#e8e6f0'), collar: N('#b01828'), neck: 'polo', pants: N('#1a1820'), cape: true, capeC: '#15111c', hatC2: N('#b01828') },
+        cream: { round: true, shirt: N('#ec781c'), shirtAlt: '#2a1406', pattern: 'jack', neck: 'none', pants: N('#ec781c'), hat: 'stem', leaf: N('#4a8a3a') },
+        tabby: { shirt: '#1e1c24', shirtAlt: N('#ece8de'), pattern: 'bones', neck: 'none', pants: '#1e1c24' },
+      },
+      big: (t, s) => inWin(s, 140, 146),
+      act(c, t, s, big) {
+        const on = big >= 0;
+        if (c.who === 'wife') give(c, -1, on ? 'toast' : 'out', 'pail');
+        if (!on) return;
+        if (c.who === 'ginger') {
+          // the vampire swirls the cape open: "boo!"
+          c.al = 'up';
+          c.ar = 'up';
+          c.items.push({ k: 'wings', side: 0, arm: '' });
+          c.o.mouth = 'o';
+          c.o.eyes = undefined;
+          c.o.look = 0;
+        } else {
+          c.o.eyes = 'happy';
+          c.o.mouth = 'laugh';
+          c.o.look = c.x < 170 ? 1 : -1;
+          if (c.who === 'cream') c.hop = hopAt(t, 1);
+        }
+      },
+    },
+    // Diwali: jewel colours with gold trim, sparklers and little diyas
+    lights: {
+      stage: 'right',
+      seed: 15,
+      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      wear: {
+        wife: { shirt: N('#d0207a'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#f0b838') },
+        ginger: { shirt: N('#1a9a5c'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', pants: N('#ece2c8') },
+        cream: { shirt: N('#2a50d8'), shirtAlt: N('#f4c440'), pattern: 'hem', collar: N('#f4c440'), neck: 'mandarin', sleeveTip: true, pants: N('#2a50d8'), dress: true },
+        tabby: { shirt: N('#f08a1a'), shirtAlt: N('#c81a6a'), pattern: 'hem', collar: N('#c81a6a'), neck: 'mandarin', pants: N('#ece2c8') },
+      },
+      big: (t, s) => inWin(s, 126, 132),
+      act(c, t, s, big) {
+        const up = big >= 0;
+        if (c.who === 'wife') give(c, -1, up ? 'toast' : 'out', 'diya');
+        else if (c.who === 'cream') give(c, 1, up ? 'toast' : 'out', 'diya');
+        else give(c, c.who === 'ginger' ? -1 : 1, up ? 'up' : 'out', 'sparkler', { big: up });
+        if (up) cheerUp(c, t, c.i);
+      },
+    },
+    // Christmas & Hanukkah: long coats, knitted hats and scarves, carols by lantern light
+    winter: {
+      stage: 'right',
+      seed: 18,
+      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      wear: {
+        wife: { shirt: N('#c08850'), shirtAlt: N('#7a5432'), coat: true, neck: 'tee', pants: N('#2a2228'), hat: 'beanie', hatC: N('#ece4d4'), hatC2: N('#c8bca8'), pom: N('#ffffff'), scarf: 'R', scarfC: N('#c82a30'), scarfC2: N('#f2ece4') },
+        ginger: { shirt: N('#2c3c70'), shirtAlt: N('#c8a040'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#c82a30'), hatC2: N('#f2ece4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#c8bca8') },
+        cream: { shirt: N('#c02a30'), shirtAlt: N('#6a1218'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#2a7a44'), hatC2: N('#f2ece4'), pom: N('#ffffff'), scarf: 'R', scarfC: N('#2a7a44'), scarfC2: N('#f2ece4') },
+        tabby: { shirt: N('#2a6a40'), shirtAlt: N('#14361e'), coat: true, neck: 'tee', pants: N('#22222a'), hat: 'beanie', hatC: N('#c82a30'), hatC2: N('#ece4d4'), pom: N('#ffffff'), scarf: 'L', scarfC: N('#ece4d4'), scarfC2: N('#c82a30') },
+      },
+      big: (t, s) => inWin(s, 160, 166),
+      act(c, t, s, big) {
+        if (c.who === 'tabby') give(c, -1, 'out', 'pole');
+        else give(c, c.face, 'chest', 'book', { c: c.who === 'cream' ? IC.bookG : IC.book });
+        // a carol: phrases of notes on a slow beat, everyone together
+        const beat = Math.floor(T.step(t, 2) * 2);
+        const sing = (beat % 16) < 11 && (beat + (c.i & 1)) % 4 !== 3;
+        c.o.look = c.face > 0 ? 1 : 0;
+        if (big >= 0) {
+          c.o.mouth = 'o';
+          c.o.eyes = 'happy';
+          c.o.look = 0;
+        } else if (sing) {
+          c.o.mouth = (beat + c.i) % 2 ? 'o' : 'laugh';
+          c.o.eyes = undefined;
+        }
+      },
+    },
+    // New Year's Eve: party hats, a sparkly dress, glasses raised to the fireworks
+    newyear: {
+      stage: 'left',
+      seed: 21,
+      cast: ['ginger', 'cream', 'wife', 'tabby'],
+      wear: {
+        wife: { shirt: N('#e8c050'), pants: N('#e8c050'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f04a9a'), hatC2: N('#f4c440'), pom: N('#ffffff') },
+        ginger: { shirt: N('#7a3ab0'), neck: 'tee', pants: N('#22222a'), hat: 'party', hatC: N('#2ab0b0'), hatC2: N('#e8e8f0'), pom: N('#f4c440') },
+        cream: { shirt: N('#c8ccd8'), pants: N('#c8ccd8'), dress: true, neck: 'vneck', sequins: true, hat: 'party', hatC: N('#f4c440'), hatC2: N('#c81a6a'), pom: N('#ffffff') },
+        tabby: { shirt: N('#2a3a8a'), collar: N('#f2ece4'), neck: 'shirt', shirtAlt: N('#f2ece4'), pants: N('#1e1e28'), hat: 'party', hatC: N('#d82a30'), hatC2: N('#f2ece4'), pom: N('#f4c440') },
+      },
+      // the fireworks salvo bursts (fire-seasons: launched at LOOP/4 and 3*LOOP/4)
+      big: (t, s) => inWin(s, HD.LOOP * 0.75 + 1.2, HD.LOOP * 0.75 + 6.5),
+      act(c, t, s, big) {
+        const look = inWin(s, HD.LOOP * 0.25 + 1.2, HD.LOOP * 0.25 + 5) >= 0;
+        const item = c.who === 'ginger' ? 'sparkler' : 'flute';
+        const side = c.who === 'ginger' ? -1 : c.face;
+        if (big >= 0) {
+          give(c, side, 'up', item, { big: true, glint: (Math.floor(T.step(t, 6) * 6) + c.i) % 3 === 0 });
+          cheerUp(c, t, c.i);
+        } else if (look) {
+          give(c, side, 'toast', item);
+          c.o.look = 0;
+          c.o.mouth = 'o';
+          c.o.eyes = undefined;
+        } else give(c, side, 'out', item);
+      },
+    },
+    // Match Night: football scarves in plain stripes, a cheer at the goal
+    match: {
+      stage: 'right',
+      seed: 24,
+      cast: ['wife', 'ginger', 'cream', 'tabby'],
+      wear: {
+        wife: { shirt: N('#f2eee6'), neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#d0202a'), scarfC2: N('#f4c440') },
+        ginger: { shirt: N('#2a5a3a'), neck: 'tee', pants: N('#2c3448'), scarf: 'L', scarfC: N('#8cc8f0'), scarfC2: N('#f4f4f4') },
+        cream: { shirt: N('#2a3460'), neck: 'tee', pants: N('#2a2a34'), scarf: 'R', scarfC: N('#2a8a4a'), scarfC2: N('#f4f4f4') },
+        tabby: { shirt: N('#7a2a3a'), neck: 'tee', pants: N('#22222a'), scarf: 'L', scarfC: N('#26346a'), scarfC2: N('#f08a2a') },
+      },
+      big: (t) => {
+        const gl = HD.summer.goal(t);
+        return gl >= 0 && gl < 0.6 ? gl / 0.6 : -1;
+      },
+      act(c, t, s, big) {
+        if (big < 0) return;
+        c.al = 'up';
+        c.ar = 'up';
+        c.items.push({ k: 'scarfUp', side: 0, arm: '' });
+        cheerUp(c, t, c.i);
+      },
+    },
+  };
+
   HD.module('family', {
     passes: [
       {
@@ -1348,13 +2006,26 @@
           else if (id === 'sandiego') drawSD(g, t);
           else if (id === 'dc') drawDC(g, t);
           else if (id === 'match' || id === 'home') {
-            const k = homeKit(t);
+            // on a night out he is alone on the steps: no niece, no door
+            const k = id === 'match' && nightCfg() ? null : homeKit(t);
             drawDoor(g, k);
             if (id === 'match') drawMatch(g, t);
             else if (k) drawNiece(g, t, k);
           }
         },
       },
+      {
+        // night out: her group in the yard, in front of the yard props
+        layer: 'scene',
+        z: 47.5,
+        id: 'night-out',
+        draw(g, t) {
+          drawNight(g, t);
+        },
+      },
     ],
+    lights(t, L) {
+      lightsNight(t, L);
+    },
   });
 })();

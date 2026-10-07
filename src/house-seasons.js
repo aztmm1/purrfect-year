@@ -897,9 +897,13 @@
         seed: 48,
         speed: 1.6,
         amp: 0.5,
-        light: { r: 30, i: 0.34, col: [0.5, 1.0, 0.62] },
+        light: { r: 30, i: 0.3, col: [0.45, 0.92, 0.7] },
         halo: 0.07,
-        spill: { r: 22, ry: 7, i: 0.3 },
+        // only a faint cool glimmer on the grass under the window, dimmer than
+        // the glass (green light on a green meadow clips fast); it keeps out
+        // of the goal flash, which stays on the screen and the glass
+        spill: { r: 16, ry: 5, i: 0.1, col: [0.55, 0.8, 0.8], calm: true },
+        goal: 0.35,
       });
     }
     if (ed.id === 'winter') {
@@ -1198,8 +1202,13 @@
     germany: [...rep('KKKKKKKKK', 2), ...rep('RRRRRRRRR', 2), ...rep('YYYYYYYYY', 2)],
     spain: [...rep('RRRRRRRRRRRR', 2), ...rep('YYYYYYYYYYYY', 4), ...rep('RRRRRRRRRRRR', 2)],
   };
-  // party pennants (birthday): little triangles, 5 wide
-  const PENNANT = ['PPPPp', 'PPPPp', '.PPp.', '.PPp.', '..p..'];
+  // the porch Spain hangs ten pixels from the iron lantern: its pigments sit
+  // a step deeper so the lantern relights it to a warm red and gold, not neon
+  const PORCH_CLOTH = { R: RD[3], r: RD[2], Y: GD[3], y: GD[2] };
+  const porchClothOf = (ch) => PORCH_CLOTH[ch] || clothOf(ch);
+  // party pennants (birthday): true bunting triangles, 5-3-3-1, the leading
+  // (right) edge a shade darker
+  const PENNANT = ['PPPPp', '.PPp.', '.PPp.', '..p..'];
   const PARTY = [
     [mixc(RG[0], NI[3], 0.12), mixc(RG[0], NI[2], 0.4)], // pink
     [GD[4], GD[3]], // yellow
@@ -1209,11 +1218,35 @@
     [mixc(RG[5], NI[6], 0.1), mixc(RG[5], NI[4], 0.4)], // violet
   ];
 
-  /** a cord hung between anchors with a soft sag: Map x -> y */
-  function cord(anchors, sag) {
+  // ---- drawing in front of lit glass ----
+  // drawFront runs after the emissive window glass and the door's light
+  // leaks. Cloth or iron laid over them must clear the emissive mask there,
+  // or the engine skips relighting those pixels and they keep their dark
+  // night colour while the rest of the cloth is lit.
+  let emMask = null;
+  const maskCtx = () => emMask || (emMask = HD.buffers && HD.buffers.emissive ? HD.buffers.emissive.getContext('2d') : null);
+  function frontSprite(g, img, x, y) {
+    x = RND(x);
+    y = RND(y);
+    const m = maskCtx();
+    if (m) {
+      m.globalCompositeOperation = 'destination-out';
+      m.drawImage(img, x, y);
+      m.globalCompositeOperation = 'source-over';
+    }
+    g.sprite(img, x, y);
+  }
+  function frontPx(g, x, y, c) {
+    const m = maskCtx();
+    if (m) m.clearRect(RND(x), RND(y), 1, 1);
+    g.px(x, y, c);
+  }
+
+  /** a cord hung between anchors [x, y, sag to the next anchor]: Map x -> y */
+  function cord(anchors) {
     const ys = new Map();
     for (let i = 0; i + 1 < anchors.length; i++) {
-      const [x0, y0] = anchors[i];
+      const [x0, y0, sag] = anchors[i];
       const [x1, y1] = anchors[i + 1];
       for (let x = x0; x <= x1; x++) {
         const u = (x - x0) / (x1 - x0);
@@ -1222,62 +1255,63 @@
     }
     return ys;
   }
-  // under the roof eave (gutter brackets at the ends and between the windows)
-  const EAVE_CORD = cord(
-    [
-      [162, 130],
-      [191, 131],
-      [220, 131],
-      [249, 131],
-      [277, 130],
-    ],
-    3,
-  );
+  // under the roof eave: hooked at the gutter ends and either side of each
+  // upper window, so the cord runs bare and nearly taut above the window
+  // heads and the cloth hangs only over plaster and timber
+  const EAVE_HOOKS = [
+    [162, 130, 2],
+    [177, 130, 1],
+    [197, 130, 2],
+    [229, 130, 1],
+    [253, 130, 2],
+    [277, 130, 0],
+  ];
+  const EAVE_CORD = cord(EAVE_HOOKS);
   // under the porch fascia, post to post, clear of the iron lantern
-  const PORCH_CORD = cord(
-    [
-      [209, 176],
-      [235, 176],
-    ],
-    2,
-  );
+  const PORCH_HOOKS = [
+    [209, 176, 1],
+    [235, 176, 0],
+  ];
+  const PORCH_CORD = cord(PORCH_HOOKS);
   const cordY = (cd, x) => (cd.has(x) ? cd.get(x) : null);
 
   /**
    * Bake one hung flag (or pennant) in three stir states (-1, 0, +1). The
-   * cloth stays whole: in a breeze a fold (a shaded column with a lit one
-   * beside it) rolls across it and the trailing bottom corner lifts. Pennant
-   * tips swing a pixel. The top row of every column follows the cord.
+   * cloth is an intact rectangle hanging from the lower of its two top
+   * corners; a 1-px tie joins the higher corner to the cord. In a breeze a
+   * fold (a shaded column with a lit one beside it) rolls across the cloth
+   * and the trailing bottom corner lifts; a pennant's tip swings a pixel.
    * Returns { x, y, frames }.
    */
   function hangFlag(cd, x, rows, colorOf) {
     const w = rows[0].length;
     const h = rows.length;
-    let top = 1e9;
-    for (let c = 0; c < w; c++) top = Math.min(top, cordY(cd, x + c));
-    const dy = [];
-    for (let c = 0; c < w; c++) dy.push(cordY(cd, x + c) - top);
-    const md = Math.max(...dy);
+    const yl = cordY(cd, x);
+    const yr = cordY(cd, x + w - 1);
+    const top = Math.max(yl, yr) + 1; // first cloth row
+    const up = top - 1 - Math.min(yl, yr); // tie length at the higher corner
+    const tieC = yl < yr ? 0 : w - 1;
     const frames = [-1, 0, 1].map((st) =>
-      HD.bake(w + 2, h + md + 1, (g) => {
+      HD.bake(w + 2, h + up + 1, (g) => {
         const fc = st < 0 ? Math.floor(w / 3) : Math.ceil((2 * w) / 3) - 1;
         const tri = rows[h - 1].indexOf('.') >= 0; // a pennant (pointed tip)
+        for (let k = 0; k < up; k++) g.px(1 + tieC, k, S[2]);
         for (let r = 0; r < h; r++) {
           const sh = tri && st !== 0 && r === h - 1 ? st : 0; // only the tip swings
           for (let c = 0; c < w; c++) {
-            let ch = rows[r][c];
+            const ch = rows[r][c];
             if (ch === '.') continue;
             if (!tri && st !== 0 && r === h - 1 && (st > 0 ? c === 0 : c === w - 1)) continue; // corner lifts
             let col;
             if (!tri && st !== 0 && r > 0 && c === fc) col = colorOf(ch.toLowerCase());
             else if (!tri && st !== 0 && r > 0 && c === fc - st) col = lift(colorOf(ch));
             else col = colorOf(ch);
-            g.px(1 + c + sh, dy[c] + r, col);
+            g.px(1 + c + sh, up + r, col);
           }
         }
       }),
     );
-    return { x: x - 1, y: top + 1, frames };
+    return { x: x - 1, y: top - up, frames };
   }
   const clothOf = (ch) => CLOTH[ch] || CLOTH[ch.toUpperCase()];
   const LIFT = new Map();
@@ -1288,38 +1322,43 @@
     return v;
   };
 
-  // ---- match-day bunting: the six teams that played in Boston + Spain ----
+  // ---- match-day bunting: the six teams that played in Boston on the eave,
+  // Spain (the team you cheer for) on the porch ----
+  // only over plaster and timber: one flag left of the upper-left window,
+  // three between the windows, two between the upper-right window and the
+  // turret (x = left edge of a 9 x 7 flag)
   const EAVE_FLAGS = [
     [165, 'usa'],
-    [176, 'ireland'],
-    [187, 'scotland'],
-    [198, 'norway'],
-    [209, 'france'],
-    [220, 'germany'],
-    [231, 'spain'],
-    [245, 'usa'],
-    [256, 'ireland'],
-    [267, 'scotland'],
+    [198, 'ireland'],
+    [209, 'germany'],
+    [220, 'scotland'],
+    [255, 'norway'],
+    [266, 'france'],
   ];
+  // the 12 x 8 Spain hangs at the right of the porch cord, clear of the
+  // door's little lit peep window
+  const PORCH_SPAIN_X = 223;
   const matchFlags = HD.perEdition((ed) => {
     if (!has(ed, 'flags-matchday')) return null;
     const out = EAVE_FLAGS.map(([x, k]) => hangFlag(EAVE_CORD, x, FLAG[k], clothOf));
-    // Spain (the team you cheer for) over the front door
-    out.push(hangFlag(PORCH_CORD, 216, FLAG.spain, clothOf));
+    out.push(hangFlag(PORCH_CORD, PORCH_SPAIN_X, FLAG.spain, porchClothOf));
     return out;
   });
+  // birthday pennants: the same plaster runs of the eave, and the porch cord
+  // with a gap over the door's peep window (x = left edge of a pennant)
+  const PENNANT_XS = [
+    [EAVE_CORD, [164, 171, 200, 207, 214, 221, 255, 262, 269]],
+    [PORCH_CORD, [209, 215, 221, 227]],
+  ];
   const partyPennants = HD.perEdition((ed) => {
     if (!has(ed, 'bunting-party')) return null;
     const out = [];
     let k = 0;
-    const put = (cd, xa, xb, pitch) => {
-      for (let x = xa; x + 4 <= xb; x += pitch) {
+    for (const [cd, xs] of PENNANT_XS)
+      for (const x of xs) {
         const [c, d] = PARTY[k++ % PARTY.length];
         out.push(hangFlag(cd, x, PENNANT, (ch) => (ch === 'P' ? c : d)));
       }
-    };
-    put(EAVE_CORD, 165, 275, 7);
-    put(PORCH_CORD, 210, 234, 6);
     return out;
   });
   /** stir state of the i-th flag on a string: the breeze runs along it */
@@ -1330,23 +1369,20 @@
   function drawHung(g, t, list) {
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
-      g.sprite(f.frames[stir(t, i)], f.x, f.y);
+      frontSprite(g, f.frames[stir(t, i)], f.x, f.y);
     }
   }
-  /** the cords, gutter hooks and porch-post ties (static, in the overlay) */
+  /** the cords and their hooks (static, in the overlay) */
   function paintCords(I, eave, porch) {
-    if (eave) {
-      for (const [x, y] of EAVE_CORD) I.set(x, y, S[1], 0);
-      for (const x of [162, 191, 220, 249, 277]) {
-        I.set(x, EAVE_CORD.get(x) - 1, S[3], 0);
-        I.set(x, EAVE_CORD.get(x), S[2], 0);
+    const run = (cd, hooks) => {
+      for (const [x, y] of cd) I.set(x, y, S[1], 0);
+      for (const [x] of hooks) {
+        I.set(x, cd.get(x) - 1, S[3], 0);
+        I.set(x, cd.get(x), S[2], 0);
       }
-    }
-    if (porch) {
-      for (const [x, y] of PORCH_CORD) I.set(x, y, S[1], 0);
-      I.set(208, 176, S[2], 0);
-      I.set(236, 176, S[2], 0);
-    }
+    };
+    if (eave) run(EAVE_CORD, EAVE_HOOKS);
+    if (porch) run(PORCH_CORD, PORCH_HOOKS);
   }
 
   // ---- the big saltire hung from the upper-left window like a fan flag ----
@@ -1390,7 +1426,7 @@
     const k = Math.floor(T.phase(ts, 3.2) * 4) % 4;
     const b = breeze(ts);
     const st = b > 0.3 ? 2 : b < -0.3 ? 0 : 1;
-    g.sprite(frames[k * 3 + st], SALTIRE_AT.x - 1, SALTIRE_AT.y);
+    frontSprite(g, frames[k * 3 + st], SALTIRE_AT.x - 1, SALTIRE_AT.y);
   }
 
   // ---- the TV in the ground-left window (Match Night) ----
@@ -1400,6 +1436,9 @@
   const PG = P.bulb.green;
   const PITCH = [mixc(PG[1], NI[3], 0.42), mixc(PG[1], NI[3], 0.28)];
   const PITCH_LINE = mixc(PG[1], P.bulb.white[1], 0.45);
+  // the replay's sunlit crowd shot at the peaks of the goal cheer
+  const PITCH_FLARE = [mixc(PG[1], PG[2], 0.18), mixc(PG[1], PG[2], 0.34)];
+  const PITCH_FLARE_LINE = mixc(PG[2], P.bulb.white[2], 0.6);
   const TV_GLASS = [0.1, 0.2, 0.32, 0.46, 0.62].map((k) => mixc(NI[2], PG[1], k));
   function paintTV(I) {
     const w = WIN['ground-left'];
@@ -1417,17 +1456,17 @@
       if (lx % 4 === 2) putW(I, w, lx, 3, W[1]);
     }
   }
-  const pitchArt = HD.perEdition((ed) =>
-    has(ed, 'tv-match')
-      ? HD.bake(SCR_W, SCR_H, (g) => {
-          for (let y = 0; y < SCR_H; y++) for (let x = 0; x < SCR_W; x++) g.px(x, y, PITCH[(x >> 1) & 1]);
-          g.vline(SCR_W >> 1, 0, SCR_H - 1, PITCH_LINE); // halfway line
-          g.vline(0, 2, SCR_H - 3, PITCH_LINE); // goal mouths
-          g.vline(SCR_W - 1, 2, SCR_H - 3, PITCH_LINE);
-        })
-      : null,
-  );
-  // player home spots on the 12 x 7 screen: [x, y, team]
+  const bakePitch = (field, line) =>
+    HD.bake(SCR_W, SCR_H, (g) => {
+      for (let y = 0; y < SCR_H; y++) for (let x = 0; x < SCR_W; x++) g.px(x, y, field[(x >> 1) & 1]);
+      g.vline(SCR_W >> 1, 0, SCR_H - 1, line); // halfway line
+      g.vline(0, 2, SCR_H - 3, line); // goal mouths
+      g.vline(SCR_W - 1, 2, SCR_H - 3, line);
+    });
+  const pitchArt = HD.perEdition((ed) => (has(ed, 'tv-match') ? { field: bakePitch(PITCH, PITCH_LINE), flare: bakePitch(PITCH_FLARE, PITCH_FLARE_LINE) } : null));
+  // player home spots on the 12 x 7 screen: [x, y, team], and where each one
+  // stands while the goal is celebrated (red scored in the right-hand net:
+  // the scorers jump in midfield, the defenders are strung across the box)
   const PLAYERS = [
     [3, 2, 0],
     [4, 5, 0],
@@ -1436,9 +1475,19 @@
     [8, 5, 1],
     [9, 2, 1],
   ];
-  const TEAM = [P.bulb.red[2], P.bulb.white[2]];
+  const GOAL_SPOTS = [
+    [5, 2],
+    [4, 5],
+    [7, 4],
+    [8, 1],
+    [9, 6],
+    [9, 3],
+  ];
+  // red shirts, white shirts a step greyer than the ball
+  const TEAM = [P.bulb.red[1], P.bulb.white[1]];
+  const BALL = P.bulb.white[2];
   function goalK(t) {
-    if (!SUM || HD.edition.id !== 'match') return -1;
+    if (!SUM || !has(HD.edition, 'tv-match')) return -1;
     return SUM.goal(t);
   }
   /** soft swells of light during the goal cheer (0..1, never a strobe) */
@@ -1453,85 +1502,128 @@
     const sy = w.gy + TV.ly + 1;
     const e = g.em;
     e.reset();
-    e.sprite(pitchArt(), sx, sy);
+    const pa = pitchArt();
+    e.sprite(goalPulse(t) > 0.55 ? pa.flare : pa.field, sx, sy);
     const ts = T.step(t, 6);
     const u = goalK(t);
-    // play sways from end to end; in the goal window it is all at the right goal
-    const play = u >= 0 ? 2.5 : 3 * (T.noise(ts, 11, 771) * 2 - 1);
+    // play sways from end to end
+    const play = 3 * (T.noise(ts, 11, 771) * 2 - 1);
     for (let i = 0; i < PLAYERS.length; i++) {
       const [px, py, team] = PLAYERS[i];
-      const x = clamp(RND(px + play + 1.3 * (T.noise(ts, 2.3, 780 + i) * 2 - 1)), 1, SCR_W - 2);
-      const y = clamp(RND(py + 1.2 * (T.noise(ts, 2.9, 790 + i) * 2 - 1)), 0, SCR_H - 1);
-      const jump = u >= 0 && u < 0.6 && team === 0 && Math.floor(ts * 3 + i) % 2 === 0 ? -1 : 0;
-      e.px(sx + x, sy + clamp(y + jump, 0, SCR_H - 1), TEAM[team]);
+      let x;
+      let y;
+      if (u >= 0) {
+        x = GOAL_SPOTS[i][0];
+        y = GOAL_SPOTS[i][1];
+        if (team === 0 && u < 0.7 && Math.floor(ts * 3 + i) % 2 === 0) y -= 1; // jumping
+      } else {
+        x = clamp(RND(px + play + 1.3 * (T.noise(ts, 2.3, 780 + i) * 2 - 1)), 1, SCR_W - 2);
+        y = clamp(RND(py + 1.2 * (T.noise(ts, 2.9, 790 + i) * 2 - 1)), 0, SCR_H - 1);
+      }
+      e.px(sx + x, sy + clamp(y, 0, SCR_H - 1), TEAM[team]);
     }
-    // the ball: passed about, or nestled in the net
+    // the ball: passed about, or in the back of the net
     let bx;
     let by;
     if (u >= 0) {
-      bx = SCR_W - 2;
+      bx = SCR_W - 1;
       by = 3;
     } else {
       bx = clamp(RND(5.5 + play + 3 * (T.noise(ts, 1.7, 799) * 2 - 1)), 1, SCR_W - 2);
       by = clamp(RND(3 + 2 * (T.noise(ts, 1.3, 798) * 2 - 1)), 0, SCR_H - 1);
     }
-    e.px(sx + bx, sy + by, P.bulb.white[2]);
-    // goal: the whole screen flares (the replay crowd shot) in soft beats
-    if (goalPulse(t) > 0.55) {
-      e.hline(sx, sx + SCR_W - 1, sy, PITCH_LINE);
-      e.hline(sx, sx + SCR_W - 1, sy + SCR_H - 1, PITCH_LINE);
-    }
+    e.px(sx + bx, sy + by, BALL);
   }
 
-  // ---- the pub sign: an iron bracket off the right porch post ----
-  const SIGN = { x: PO.postR + 2, y: PO.roofY + 11 }; // board top-left
-  // board 14 x 10: a gold frame on bottle green, a painted three-leaf
-  // shamrock and a pint of stout with its cream head (no words)
+  // ---- the pub sign: an iron bracket on the turret wall at the house's
+  // right corner, the board hanging between the ground-right window and the
+  // turret window (clear of both frames and their glass) ----
+  const SIGN_ARM = { x0: 265, x1: 277, y: 168 }; // arm row; wall plate at x1
+  const SIGN = { x: 265, y: 172 }; // board top-left (11 x 17)
+  const SIGN_CHAINS = [2, 8]; // chain columns on the board
+  // a gold frame on bottle green: a painted shamrock (three round leaves
+  // meeting at a centre, a curved stem) over a tulip pint of ale whose cream
+  // head stands proud of the rim (no words)
   const SIGN_ROWS = [
-    '.FFFFFFFFFFFFF.',
-    'F..lLL..bHHHHbf',
-    'F..LLL..bhHHhbf',
-    'FlL.L.lLbgkkgbf',
-    'FLLLvLLLbgkkgbf',
-    'FLL.s.LLbgkkgbf',
-    'F...s...bgkkgbf',
-    'F....s..b.gg.bf',
-    'Fbbbbbbbbbbbbbf',
-    '.fffffffffffff.',
+    '.FFFFFFFFF.',
+    'F...aLa...f',
+    'F...LlL...f',
+    'F...aLa...f',
+    'F.aLaLaLa.f',
+    'F.LlLsLlL.f',
+    'F.aLasaLa.f',
+    'F.....s...f',
+    'F.........f',
+    'F...hHh...f',
+    'F..hHHHh..f',
+    'F..pYYYq..f',
+    'F.pYYYYyq.f',
+    'F..pYYyq..f',
+    'F...pYq...f',
+    'F...qyq...f',
+    '.fffffffff.',
   ];
   const signArt = HD.perEdition((ed) =>
     has(ed, 'pub-sign')
       ? HD.sprite(
-          SIGN_ROWS.map((r, y) => (y > 0 && y < SIGN_ROWS.length - 1 ? r.replace(/\./g, 'b') : r)),
-          { F: GD[3], f: GD[2], b: LF[1], L: LF[6], l: LF[7], v: LF[3], s: LF[5], H: BN[4], h: BN[3], g: BN[1], k: W[0] },
+          SIGN_ROWS.map((r, y) => (y > 0 && y < SIGN_ROWS.length - 1 ? r.slice(0, 1) + r.slice(1, -1).replace(/\./g, 'b') + r.slice(-1) : r)),
+          {
+            F: GD[2],
+            f: GD[1],
+            b: LF[1],
+            L: LF[7],
+            l: LF[6],
+            a: LF[5],
+            s: LF[5],
+            H: BN[4],
+            h: BN[3],
+            p: BN[2],
+            q: BN[1],
+            Y: GD[3],
+            y: GD[2],
+          },
         )
       : null,
   );
   function paintSignBracket(I) {
-    const x0 = PO.postR + 1;
-    const y = PO.roofY + 7;
-    // wall plate on the post, the arm, and a curled brace under it
-    I.set(x0, y - 1, S[3], 0);
-    I.set(x0, y, S[3], 0);
-    I.set(x0, y + 1, S[2], 0);
-    for (let x = x0; x <= x0 + 15; x++) I.set(x, y, x === x0 + 15 ? S[4] : S[3], 0);
-    I.set(x0 + 15, y - 1, S[2], 0);
-    stamp(I, ['....ss', '...s..', '..s...', '.s....', 's.....'], x0, y + 1, { s: S[2] });
-    I.set(x0 + 6, y + 1, S[2], 0);
+    const { x0, x1, y } = SIGN_ARM;
+    // wall plate with two bolts, the arm with a knob at its end, and a short
+    // diagonal brace from the plate up to the arm
+    for (let yy = y - 2; yy <= y + 2; yy++) I.set(x1, yy, yy === y - 2 ? S[4] : S[2], 0);
+    I.set(x1, y - 1, S[5], 0);
+    I.set(x1, y + 1, S[5], 0);
+    for (let x = x0; x < x1; x++) I.set(x, y, S[3], 0);
+    I.set(x0, y - 1, S[4], 0);
+    I.set(x1 - 1, y + 2, S[2], 0);
+    I.set(x1 - 2, y + 1, S[2], 0);
+  }
+  /**
+   * The sign swings a pixel only in real gusts, with hysteresis: it moves out
+   * when the breeze passes +-0.85 and comes back once it falls inside +-0.4
+   * (about 30 moves a loop, none in quick succession). Stateless: look back
+   * along the 8 fps steps to the last decisive moment.
+   */
+  function signSwing(t) {
+    const ts = T.step(t, 8);
+    for (let k = 0; k < 480; k++) {
+      const b = breeze(ts - 0.4 - k / 8);
+      if (b > 0.85) return 1;
+      if (b < -0.85) return -1;
+      if (b > -0.4 && b < 0.4) return 0;
+    }
+    return 0;
   }
   function drawSign(g, t) {
-    const ts = T.step(t, 8);
-    const b = breeze(ts - 0.4);
-    const sh = b > 0.55 ? 1 : b < -0.55 ? -1 : 0;
+    const sh = signSwing(t);
     const x = SIGN.x + sh;
     const y = SIGN.y;
-    // two short chains from the arm
-    for (const cx of [2, 12]) {
-      g.px(SIGN.x + cx, y - 3, S[3]);
-      g.px(SIGN.x + cx + (sh > 0 ? 1 : 0), y - 2, S[2]);
-      g.px(x + cx, y - 1, S[3]);
+    // two short chains from the arm: the top links stay on the arm
+    for (const cx of SIGN_CHAINS) {
+      frontPx(g, SIGN.x + cx, y - 3, S[4]);
+      frontPx(g, SIGN.x + cx, y - 2, S[3]);
+      frontPx(g, x + cx, y - 1, S[4]);
     }
-    g.sprite(signArt(), x, y);
+    frontSprite(g, signArt(), x, y);
   }
 
   // ---- July 4th: pleated red-white-blue fans (NYC) ----
@@ -1666,7 +1758,11 @@
       signArt();
     },
     winCfg: (win) => winSetup().cfg[win.index],
-    winBoost: (win, t) => winSetup().boost[win.index] * (1 + 0.95 * goalPulse(t)),
+    winBoost: (win, t) => {
+      const S = winSetup();
+      const gk = S.cfg[win.index].goal;
+      return S.boost[win.index] * (1 + (gk === undefined ? 0.95 : gk) * goalPulse(t));
+    },
     /** window glass level: the goal cheer lifts every window for a few beats */
     level(i, lv, t) {
       const p = goalPulse(t);
